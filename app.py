@@ -5,8 +5,23 @@ import time
 import plotly.graph_objects as go
 import random
 import string
+import gspread
+from google.oauth2.service_account import Credentials
 
-# --- CONFIGURACION DE PAGINA ---
+# --- FUNCIÓN DE CONEXIÓN (Añádela aquí) ---
+def conectar_google():
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        # Usamos st.secrets para mayor seguridad
+        creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+        client = gspread.authorize(creds)
+        # Asegúrate de que el nombre coincida con tu Excel
+        return client.open("MiExcelPlanSemanal").sheet1
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
+        return None
+
+# --- 0. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Plan Semanal", layout="wide")
 
 # --- PALETA DE COLORES PERSONALIZADA ---
@@ -150,12 +165,29 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- SISTEMA DE AUTENTICACIÓN ---
+# --- SISTEMA DE AUTENTICACIÓN (LECTURA AUTOMÁTICA DE EXCEL) ---
 if 'db_usuarios' not in st.session_state:
+    # 1. Primero agregamos tus accesos fijos (los que no están en el Excel)
     st.session_state.db_usuarios = {
-        "ADMIN123": ["Marianita", "2026"], 
-        "INVITADO77": ["Usuario Nuevo", None] 
+        "ADMIN123": ["Marianita", "2026"]
     }
+    
+    # 2. Ahora leemos a todos los clientes que están guardados en el Excel
+    hoja = conectar_google()
+    if hoja:
+        try:
+            # Traemos todas las filas del Excel
+            lista_usuarios = hoja.get_all_records() 
+            for fila in lista_usuarios:
+                t = str(fila['Token'])
+                n = str(fila['Nombre'])
+                # Si en el Excel ya hay un PIN, lo trae; si no, pone None
+                p = str(fila['PIN']) if fila.get('PIN') else None
+                
+                # Los agregamos a la memoria de la app
+                st.session_state.db_usuarios[t] = [n, p]
+        except Exception as e:
+            st.error(f"Error al sincronizar con la nube: {e}")
 
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'user_key' not in st.session_state: st.session_state.user_key = None
@@ -179,11 +211,11 @@ if not st.session_state.autenticado:
                 </p>
         """, unsafe_allow_html=True)
         
-        # El input y el botón
+      # El input y el botón
         entrada = st.text_input("Acceso:", type="password", placeholder="Llave de acceso...", label_visibility="collapsed")
         
         st.markdown('<div style="margin-top: 15px;">', unsafe_allow_html=True)
-        if st.button("INGRESAR SISTEMA", use_container_width=True):
+        if st.button("INGRESAR SISTEMA", width="stretch"):
             for token, datos in st.session_state.db_usuarios.items():
                 if entrada == token or (datos[1] and entrada == datos[1]):
                     st.session_state.autenticado = True
@@ -194,36 +226,59 @@ if not st.session_state.autenticado:
         st.markdown('</div></div>', unsafe_allow_html=True)
     st.stop()
 
+col_vacia, col_pin, col_vacia2 = st.columns([1, 2, 1])
 
-# --- CONFIGURACIÓN DE PIN INICIAL ---
-if st.session_state.db_usuarios[st.session_state.user_key][1] is None:
-    st.markdown("<br>", unsafe_allow_html=True)
-    _, col_pin, _ = st.columns([1, 1.5, 1]) 
+
+# --- CONFIGURACIÓN DE PIN INICIAL (DISEÑO PREMIUM + GUARDADO EN EXCEL) ---
+if st.session_state.autenticado:
+    user_info = st.session_state.db_usuarios.get(st.session_state.user_key)
     
-    with col_pin:
-        st.markdown(f"""
-            <div style="background-color: white; padding: 25px; border-radius: 15px; 
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid {ORANGE};">
-                <h3 style='margin-top:0;'>Configura tu PIN</h3>
-                <p style='color:gray; font-size:0.9rem;'>Hola <b>{st.session_state.nombre_usuario}</b>, crea un código de 4 números para entrar más rápido.</p>
-            </div>
-        """, unsafe_allow_html=True)
+    # Verificamos si no tiene PIN configurado
+    if user_info and (len(user_info) < 2 or user_info[1] is None):
+        st.markdown("<br>", unsafe_allow_html=True)
+        _, col_pin, _ = st.columns([1, 1.5, 1]) 
         
-        with st.container():
-            st.markdown('<div style="margin-top: 10px;">', unsafe_allow_html=True)
-            nuevo_pin = st.text_input("PIN de 4 dígitos:", max_chars=4, type="password", help="Solo números")
+        with col_pin:
+            # Tu diseño elegante de la tarjeta blanca
+            st.markdown(f"""
+                <div style="background-color: white; padding: 25px; border-radius: 15px; 
+                            box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid {ORANGE};">
+                    <h3 style='margin-top:0;'>Configura tu PIN</h3>
+                    <p style='color:gray; font-size:0.9rem;'>Hola <b>{st.session_state.nombre_usuario}</b>, crea un código de 4 números para entrar más rápido.</p>
+                </div>
+            """, unsafe_allow_html=True)
             
-            st.markdown('<div class="btn-naranja">', unsafe_allow_html=True)
-            if st.button("GUARDAR PIN", use_container_width=True):
-                if len(nuevo_pin) == 4 and nuevo_pin.isdigit():
-                    st.session_state.db_usuarios[st.session_state.user_key][1] = nuevo_pin
-                    st.success("¡PIN guardado correctamente!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.warning("El PIN debe ser de exactamente 4 números.")
-            st.markdown('</div></div>', unsafe_allow_html=True)
-    st.stop()
+            with st.container():
+                st.markdown('<div style="margin-top: 10px;">', unsafe_allow_html=True)
+                # Importante: añadimos 'key' para evitar conflictos de Streamlit
+                nuevo_pin = st.text_input("PIN de 4 dígitos:", max_chars=4, type="password", key="setup_pin_final")
+                
+                st.markdown('<div class="btn-naranja">', unsafe_allow_html=True)
+                if st.button("GUARDAR PIN Y ACTIVAR", width="stretch"):
+                    if len(nuevo_pin) == 4 and nuevo_pin.isdigit():
+                        # --- PROCESO DE GUARDADO EN GOOGLE SHEETS ---
+                        hoja = conectar_google()
+                        if hoja:
+                            try:
+                                # Busca la fila del usuario por su Token
+                                celda = hoja.find(st.session_state.user_key)
+                                # Actualiza la columna 3 (C) con el nuevo PIN
+                                hoja.update_cell(celda.row, 3, nuevo_pin)
+                                
+                                # También actualizamos la memoria local para esta sesión
+                                st.session_state.db_usuarios[st.session_state.user_key][1] = nuevo_pin
+                                
+                                st.success("¡PIN guardado en la nube correctamente!")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al conectar con el Excel: {e}")
+                        else:
+                            st.error("Error: No se pudo conectar con Google Sheets.")
+                    else:
+                        st.warning("El PIN debe ser de exactamente 4 números.")
+                st.markdown('</div></div>', unsafe_allow_html=True)
+        st.stop()
 
 # --- INICIALIZACION DE DATOS ---
 dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
@@ -266,17 +321,36 @@ with st.sidebar:
         
     st.divider()
 
+   # --- PANEL DE ADMINISTRACIÓN (DENTRO DEL SIDEBAR) ---
     if st.session_state.user_key == "ADMIN123":
-        with st.expander("PANEL DE VENTAS"):
+        # Usamos el ícono de carpeta 📁 como pediste
+        with st.expander("📁 PANEL DE VENTAS"):
             st.write("Generar acceso para nuevos clientes:")
-            nom_cli = st.text_input("Nombre del Cliente", placeholder="Ej: Juan Pérez")
-            if st.button("Generar Nuevo Token"):
-                nuevo_tok = "MAR-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-                st.session_state.db_usuarios[nuevo_tok] = [nom_cli, None]
-                st.write("Token generado (copia abajo):")
-                st.code(nuevo_tok, language="text")
-                st.success(f"Listo para {nom_cli}")
-        st.divider()
+            nom_cli = st.text_input("Nombre del Cliente", placeholder="Ej: Juan Pérez", key="nom_admin_key")
+            
+            # El botón que genera el token y lo guarda
+            if st.button("GENERAR Y GUARDAR TOKEN", width="stretch"):
+                if nom_cli:
+                    # Generación del token con el prefijo MAR-
+                    nuevo_tok = "MAR-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+                    
+                    # 1. Guardar en memoria local (Streamlit)
+                    st.session_state.db_usuarios[nuevo_tok] = [nom_cli, None]
+                    
+                    # 2. Guardar en Google Sheets (La nube)
+                    hoja = conectar_google()
+                    if hoja:
+                        try:
+                            # Se agrega una fila con: Nombre, Token y espacio para el PIN
+                            hoja.append_row([nom_cli, nuevo_tok, ""]) 
+                            st.success(f"¡Éxito! Token para {nom_cli} guardado.")
+                            st.code(nuevo_tok, language="text")
+                        except Exception as e:
+                            st.error(f"Error al subir a la nube: {e}")
+                else:
+                    st.warning("Por favor, escribe el nombre del cliente.")
+        
+        st.divider() # Línea divisoria después del panel
 
     st.header("Recompensas")
     st.markdown(f'<div class="marly-puntos-badge"> {st.session_state.puntos} pts</div>', unsafe_allow_html=True)
@@ -349,7 +423,7 @@ st.markdown(f"""
 if 'mostrar_wrapped' not in st.session_state:
     st.session_state.mostrar_wrapped = False
 
-if st.button("SOLICITAR FEEDBACK", use_container_width=True):
+if st.button("SOLICITAR FEEDBACK", width="stretch"):
     frases_motivadoras = [
         "No te detengas cuando estés cansada, detente cuando hayas terminado.",
         "La disciplina es el puente entre las metas y los logros.",
@@ -379,9 +453,10 @@ if st.session_state.mostrar_wrapped:
 </div>
 """, unsafe_allow_html=True)
     
-    if st.button("VOLVER AL PLAN", use_container_width=True):
+    if st.button("VOLVER AL PLAN", width="stretch"):
         st.session_state.mostrar_wrapped = False
         st.rerun()
+
 # --- SECCIÓN DE GESTIÓN (CARPETA CON ESTILO TARJETA) ---
 with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
     
@@ -396,7 +471,7 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         na = st.text_input("Nombre de la nueva área:", placeholder="Ej: Salud, Finanzas...", key="na_input")
         st.markdown(f'<span class="area-goal">Objetivo / Meta</span>', unsafe_allow_html=True)
         ng = st.text_input("Define el objetivo:", placeholder="Ej: Estar en forma...", key="ng_input", label_visibility="collapsed")
-        if st.button("AÑADIR ÁREA", use_container_width=True):
+        if st.button("AÑADIR ÁREA", width="stretch"):
             if na and na not in st.session_state.areas:
                 st.session_state.areas[na] = [[], ng]
                 st.rerun()
@@ -417,7 +492,7 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         st.markdown(f'<span class="area-goal">Días activos</span>', unsafe_allow_html=True)
         dias_tarea = st.multiselect("Selecciona los días:", dias_semana, default=dias_semana, key="dias_multi")
         
-        if st.button("GUARDAR TAREA", use_container_width=True):
+        if st.button("GUARDAR TAREA", width="stretch"):
             if nt and dias_tarea:
                 st.session_state.areas[ad][0].append({"nombre": nt, "dias": dias_tarea})
                 st.rerun()
@@ -437,13 +512,13 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
             tareas_en_area = [t["nombre"] for t in st.session_state.areas[area_sel_del][0]]
             if tareas_en_area:
                 tarea_a_borrar = st.selectbox("Selecciona Tarea a eliminar:", ["..."] + tareas_en_area)
-                if st.button("BORRAR TAREA SELECCIONADA", use_container_width=True):
+                if st.button("BORRAR TAREA SELECCIONADA", width="stretch"):
                     if tarea_a_borrar != "...":
                         st.session_state.areas[area_sel_del][0] = [t for t in st.session_state.areas[area_sel_del][0] if t["nombre"] != tarea_a_borrar]
                         st.rerun()
             
             st.divider()
-            if st.button("ELIMINAR ÁREA COMPLETA", use_container_width=True, type="secondary"):
+            if st.button("ELIMINAR ÁREA COMPLETA", width="stretch", type="secondary"):
                 del st.session_state.areas[area_sel_del]
                 st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -493,7 +568,7 @@ for nombre_dia in dias_semana:
                     
                     with c_c:
                         # Checkbox sin texto (label="") para que no estorbe
-                        check = st.checkbox("", key=k_chk, label_visibility="collapsed")
+                        check = st.checkbox("Seleccionar ítem", key=k_chk, label_visibility="collapsed")
                         
                     with c_l:
                         logro = st.text_input("Logro:", key=k_log, placeholder="¿Qué lograste?", label_visibility="collapsed")
@@ -503,9 +578,9 @@ for nombre_dia in dias_semana:
                         tareas_dia.append({"Área": area, "Tarea": tarea_nombre, "Logro": logro})
                         dict_checks[k_chk] = True
 
-        # Botón de Registrar específico para el día
+     # Botón de Registrar específico para el día
         st.markdown('<div class="btn-naranja" style="margin-top:15px;">', unsafe_allow_html=True)
-        if st.button(f"GUARDAR {nombre_dia.upper()}", key=f"s_{nombre_dia}_{v}", use_container_width=True):
+        if st.button(f"GUARDAR {nombre_dia.upper()}", key=f"s_{nombre_dia}_{v}", width="stretch"):
             if tareas_dia:
                 puntos_ganados = len(tareas_dia) * 15
                 st.session_state.puntos += puntos_ganados
@@ -517,6 +592,7 @@ for nombre_dia in dias_semana:
                 time.sleep(0.5)
                 st.rerun()
         st.markdown('</div></div>', unsafe_allow_html=True)
+
 # --- ANALÍTICA ---
 st.write("---")
 c_g, c_b = st.columns([1, 1])
@@ -534,7 +610,7 @@ with c_g:
     ))
     fig.update_layout(height=380, margin=dict(t=30, b=30, l=30, r=30),
                       polar=dict(radialaxis=dict(visible=True, range=[0, 100])))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with c_b:
     # Título con estilo de Meta
@@ -544,7 +620,7 @@ with c_b:
     st.markdown('<div style="overflow-x: auto;">', unsafe_allow_html=True)
     st.dataframe(
         st.session_state.historial, 
-        use_container_width=True, 
+        width="stretch", 
         hide_index=True,
         column_config={
             "Logro": st.column_config.TextColumn("Logro", width="large"),
@@ -558,20 +634,20 @@ with c_b:
     c_cob, c_lim, c_met = st.columns(3)
 
     with c_cob:
-        if st.button("AGREGAR PTS", use_container_width=True):
+        if st.button("AGREGAR PTS", width="stretch"):
             st.session_state.puntos += len(dict_checks) * 15
             st.balloons()
             st.rerun()
 
     with c_lim:
-        if st.button("LIMPIAR", use_container_width=True):
+        if st.button("LIMPIAR", width="stretch"):
             st.session_state.version_tablero += 1
             st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
             st.rerun()
 
     # --- MÉTODO 5-4-3-2-1 (DISEÑO ENFOCADO EN MÓVIL) ---
     with c_met:
-        if st.button("MÉTODO 5-4-3-2-1", use_container_width=True):
+        if st.button("MÉTODO 5-4-3-2-1", width="stretch"):
             placeholder = st.empty()
             frases = [
                 "5... ¡Visualiza tu éxito!", 
