@@ -202,7 +202,7 @@ if not st.session_state.autenticado:
         st.markdown(f"""
             <div style="padding: 10px; background-color: #f1f1f1; border-radius: 15px 15px 0 0; border: 2px solid {ORANGE}; border-bottom: none; text-align: center;">
                 <span style="color: {DEEP_SPACE}; font-size: 1.8rem; font-weight: 800; font-style: italic; text-transform: uppercase;">
-                    Bienvenida
+                    Bienvenido/a
                 </span>
             </div>
             <div style="background-color: white; padding: 25px; border-radius: 0 0 15px 15px; border: 2px solid {ORANGE}; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
@@ -311,7 +311,8 @@ with st.sidebar:
         st.rerun()
     
     with st.expander("Seguridad: Cambiar mi PIN"):
-        pin_upd = st.text_input("PIN Nuevo (4 dígitos)", max_chars=4, type="password", key="ch_pin")
+        st.markdown('<span class="area-goal">PIN Nuevo (4 dígitos)</span>', unsafe_allow_html=True)
+        pin_upd = st.text_input("PIN Nuevo (4 dígitos)", max_chars=4, type="password", key="ch_pin", label_visibility="collapsed")
         if st.button("Actualizar PIN"):
             if len(pin_upd) == 4 and pin_upd.isdigit():
                 st.session_state.db_usuarios[st.session_state.user_key][1] = pin_upd
@@ -325,8 +326,8 @@ with st.sidebar:
     if st.session_state.user_key == "ADMIN123":
         # Usamos el ícono de carpeta 📁 como pediste
         with st.expander("📁 PANEL DE VENTAS"):
-            st.write("Generar acceso para nuevos clientes:")
-            nom_cli = st.text_input("Nombre del Cliente", placeholder="Ej: Juan Pérez", key="nom_admin_key")
+            st.markdown('<span class="area-goal">Generar acceso para nuevos clientes:</span>', unsafe_allow_html=True)
+            nom_cli = st.text_input("Nombre del Cliente", placeholder="Ej: Juan Pérez", key="nom_admin_key", label_visibility="collapsed")
             
             # El botón que genera el token y lo guarda
             if st.button("GENERAR Y GUARDAR TOKEN", width="stretch"):
@@ -372,11 +373,20 @@ with st.sidebar:
                 del st.session_state.tienda[item]; st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
     
+with st.sidebar:
     with st.expander("Añadir Recompensa"):
-        n_item = st.text_input("Premio")
-        n_costo = st.number_input("Puntos", min_value=10, step=10)
-        if st.button("Guardar Premio"):
-            st.session_state.tienda[n_item] = n_costo; st.rerun()
+        # Todo este bloque debe tener la sangría (4 espacios) para estar dentro del cuadro
+        st.markdown('<span class="area-goal">Premio</span>', unsafe_allow_html=True)
+        n_item = st.text_input("Premio", label_visibility="collapsed", key="new_reward_name")
+        
+        st.markdown('<span class="area-goal">Puntos</span>', unsafe_allow_html=True)
+        n_costo = st.number_input("Puntos", min_value=10, step=10, label_visibility="collapsed")
+        
+        if st.button("Guardar Premio", use_container_width=True):
+            if n_item:
+                # Formato solicitado: Nombre (Puntos)
+                st.session_state.tienda[f"{n_item} ({n_costo})"] = n_costo 
+                st.rerun()
 
     st.divider()
     st.header("Recordatorios")
@@ -389,7 +399,8 @@ with st.sidebar:
                 st.session_state.recordatorios.pop(idx); st.rerun()
     
     with st.expander("Nuevo Recordatorio"):
-        nuevo_rec = st.text_input("Nota:")
+        st.markdown('<span class="area-goal">Nota:</span>', unsafe_allow_html=True)
+        nuevo_rec = st.text_input("Nota:", key="rec_input_unique", label_visibility="collapsed")
         if st.button("Añadir"):
             if nuevo_rec: st.session_state.recordatorios.append(nuevo_rec); st.rerun()
 
@@ -604,12 +615,28 @@ with c_g:
     areas_lista = list(st.session_state.areas.keys())
     secuencia_colores = [ORANGE, BLUE_GREEN, SKY_BLUE, AMBER, "#ef5350", "#7e57c2", "#66bb6a"]
     progreso_real = [min(len(st.session_state.historial[st.session_state.historial["Área"] == a]) * 10, 100) for a in areas_lista]
+    
     fig = go.Figure(go.Barpolar(
         r=progreso_real, theta=areas_lista, 
         marker_color=secuencia_colores[:len(areas_lista)], opacity=0.8
     ))
-    fig.update_layout(height=380, margin=dict(t=30, b=30, l=30, r=30),
-                      polar=dict(radialaxis=dict(visible=True, range=[0, 100])))
+
+    # ¡ESTO DEBE ESTAR AQUÍ ADENTRO! (Indentado)
+    fig.update_layout(
+        height=380,
+        margin=dict(t=30, b=30, l=30, r=30),
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                tickfont=dict(
+                    size=10, 
+                    color="#ef5350", 
+                    weight="bold"
+                )
+            )
+        )
+    )
     st.plotly_chart(fig, width="stretch")
 
 with c_b:
