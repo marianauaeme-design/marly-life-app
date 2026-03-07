@@ -280,11 +280,34 @@ if st.session_state.autenticado:
                 st.markdown('</div></div>', unsafe_allow_html=True)
         st.stop()
 
+def guardar_en_historial_nube(fila_datos):
+    """
+    fila_datos debe ser una lista: [Token, Fecha, Día, Área, Tarea, Logro]
+    """
+    # Intentamos conectar
+    documento = conectar_google() 
+    
+    if documento:
+        try:
+            # Si conectar_google() devuelve el libro completo, buscamos la pestaña
+            # Si ya devuelve una pestaña, intentamos usar el Spreadsheet padre
+            try:
+                pestana_historial = documento.spreadsheet.worksheet("Historial")
+            except:
+                # Si lo anterior falla, es que 'documento' ya es el libro
+                pestana_historial = documento.worksheet("Historial")
+                
+            pestana_historial.append_row(fila_datos)
+            return True
+        except Exception as e:
+            st.error(f"Error al guardar en Historial: {e}")
+    return False
+
 # --- INICIALIZACION DE DATOS ---
 dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
 if 'puntos' not in st.session_state: st.session_state.puntos = 0
-if 'nombre_usuario' not in st.session_state: 
+if 'nombre_usuario' not in st.session_state:
     st.session_state.nombre_usuario = st.session_state.db_usuarios[st.session_state.user_key][0]
 if 'historial' not in st.session_state: 
     st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
@@ -585,9 +608,16 @@ for nombre_dia in dias_semana:
                         logro = st.text_input("Logro:", key=k_log, placeholder="¿Qué lograste?", label_visibility="collapsed")
                     
                     # 3. Guardar estado (esto es vital para que sume puntos)
+                    # 3. Guardar estado (ESTO ES LO QUE ARREGLA EL ERROR)
                     if check: 
+                        # Guardamos en la lista para el historial local
                         tareas_dia.append({"Área": area, "Tarea": tarea_nombre, "Logro": logro})
-                        dict_checks[k_chk] = True
+                        
+                        # ACTUALIZACIÓN AQUÍ: Guardamos un diccionario con los datos, no solo True
+                        dict_checks[tarea_nombre] = {
+                            "area": area, 
+                            "logro": logro if logro else "Tarea completada"
+                        }
 
      # Botón de Registrar específico para el día
         st.markdown('<div class="btn-naranja" style="margin-top:15px;">', unsafe_allow_html=True)
@@ -640,10 +670,10 @@ with c_g:
     st.plotly_chart(fig, width="stretch")
 
 with c_b:
-    # Título con estilo de Meta
+    # --- TÍTULO ---
     st.markdown('<span class="area-goal" style="font-size: 1.3rem;">Bitácora</span>', unsafe_allow_html=True)
     
-    # --- SCROLL LATERAL Y CONFIGURACIÓN DE TABLA ---
+    # --- TABLA VISUAL (HISTORIAL LOCAL) ---
     st.markdown('<div style="overflow-x: auto;">', unsafe_allow_html=True)
     st.dataframe(
         st.session_state.historial, 
@@ -657,14 +687,53 @@ with c_b:
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- BOTONES DE ACCIÓN (TODOS CON EL MISMO TAMAÑO) ---
+    # --- ESPACIO Y COLUMNAS PARA BOTONES ---
+    st.write("")
     c_cob, c_lim, c_met = st.columns(3)
 
+    # --- BOTÓN: AGREGAR PUNTOS Y GUARDAR EN EXCEL ---
+  # --- BOTÓN: AGREGAR PUNTOS Y GUARDAR EN EXCEL ---
     with c_cob:
         if st.button("AGREGAR PTS", width="stretch"):
-            st.session_state.puntos += len(dict_checks) * 15
-            st.balloons()
-            st.rerun()
+            # Verificamos que existan tareas seleccionadas en el diccionario dict_checks
+            if dict_checks:
+                import datetime
+                fecha_actual = datetime.date.today().strftime("%d/%m/%Y")
+                # Obtenemos el nombre del día actual de tu lista de inicialización
+                dia_actual = dias_semana[datetime.date.today().weekday()] 
+                
+                # Procesamos cada tarea marcada para enviarla a la nube
+                for tarea_nombre, info in dict_checks.items():
+                    # 1. Preparamos la fila según el orden de tu Excel (Token, Fecha, Día, Área, Tarea, Logro)
+                    datos_para_nube = [
+                        st.session_state.user_key,   # Columna A: Token
+                        fecha_actual,                # Columna B: Fecha
+                        dia_actual,                  # Columna C: Día
+                        info["area"],                # Columna D: Área (Leído de tu nuevo diccionario)
+                        tarea_nombre,                # Columna E: Tarea
+                        info["logro"]                # Columna F: Logro (Leído de tu nuevo diccionario)
+                    ]
+                    
+                    # 2. Guardamos en Google Sheets usando la función que definiste arriba
+                    guardar_en_historial_nube(datos_para_nube)
+                    
+                    # 3. Actualizamos la tabla visual localmente (st.session_state.historial)
+                    nueva_fila = pd.DataFrame([{
+                        "Fecha": fecha_actual, 
+                        "Día": dia_actual, 
+                        "Área": info["area"], 
+                        "Tarea": tarea_nombre, 
+                        "Logro": info["logro"]
+                    }])
+                    st.session_state.historial = pd.concat([st.session_state.historial, nueva_fila], ignore_index=True)
+
+                # 4. Sumamos puntos (15 por tarea) y lanzamos globos de celebración
+                st.session_state.puntos += len(dict_checks) * 15
+                st.balloons()
+                st.success(f"¡Sincronizado! +{len(dict_checks) * 15} puntos ganados.")
+                st.rerun()
+            else:
+                st.warning("Selecciona al menos una tarea antes de agregar.")
 
     with c_lim:
         if st.button("LIMPIAR", width="stretch"):
@@ -715,3 +784,4 @@ with c_b:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
+
