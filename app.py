@@ -8,6 +8,24 @@ import string
 import gspread
 from google.oauth2.service_account import Credentials
 
+# --- ESTO VA AL PRINCIPIO DEL ARCHIVO (Línea 50 aprox) ---
+def limpiar_historial_nube():
+    documento = conectar_google()
+    if documento:
+        try:
+            try:
+                pestana = documento.spreadsheet.worksheet("Historial")
+            except:
+                pestana = documento.worksheet("Historial")
+            
+            # Borra contenido manteniendo encabezados
+            if pestana.row_count > 1:
+                pestana.delete_rows(2, pestana.row_count)
+            return True
+        except Exception as e:
+            st.error(f"Error en la nube: {e}")
+    return False
+
 # --- FUNCIÓN DE CONEXIÓN (Añádela aquí) ---
 def conectar_google():
     try:
@@ -619,19 +637,26 @@ for nombre_dia in dias_semana:
                             "logro": logro if logro else "Tarea completada"
                         }
 
-     # Botón de Registrar específico para el día
+   # --- BOTÓN DE REGISTRO DIARIO (SOLO BITÁCORA VISUAL) ---
         st.markdown('<div class="btn-naranja" style="margin-top:15px;">', unsafe_allow_html=True)
+        
         if st.button(f"GUARDAR {nombre_dia.upper()}", key=f"s_{nombre_dia}_{v}", width="stretch"):
             if tareas_dia:
-                puntos_ganados = len(tareas_dia) * 15
-                st.session_state.puntos += puntos_ganados
+                # 1. Creamos el DataFrame con lo recolectado en el bucle actual
                 df_hoy = pd.DataFrame(tareas_dia)
                 df_hoy["Fecha"] = datetime.now().strftime("%d/%m/%Y")
                 df_hoy["Día"] = nombre_dia
+                
+                # 2. Añadimos al historial de la sesión (Lo que se ve en la tabla de Bitácora)
                 st.session_state.historial = pd.concat([st.session_state.historial, df_hoy], ignore_index=True)
-                st.success(f"¡{nombre_dia} guardado! +{puntos_ganados} pts")
+                
+                # 3. Mensaje de confirmación sin sumar puntos aún
+                st.success(f"¡{nombre_dia} añadido a la Bitácora visual!")
                 time.sleep(0.5)
                 st.rerun()
+            else:
+                st.warning("No hay tareas marcadas para este día.")
+                
         st.markdown('</div></div>', unsafe_allow_html=True)
 
 # --- ANALÍTICA ---
@@ -669,80 +694,68 @@ with c_g:
     )
     st.plotly_chart(fig, width="stretch")
 
-with c_b:
-    # --- TÍTULO ---
-    st.markdown('<span class="area-goal" style="font-size: 1.3rem;">Bitácora</span>', unsafe_allow_html=True)
-    
-    # --- TABLA VISUAL (HISTORIAL LOCAL) ---
-    st.markdown('<div style="overflow-x: auto;">', unsafe_allow_html=True)
-    st.dataframe(
-        st.session_state.historial, 
-        width="stretch", 
-        hide_index=True,
-        column_config={
-            "Logro": st.column_config.TextColumn("Logro", width="large"),
-            "Tarea": st.column_config.TextColumn("Tarea", width="medium"),
-            "Fecha": st.column_config.TextColumn("Fecha", width="small")
-        }
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+# --- DENTRO DE TU COLUMNA DE BITÁCORA (with c_b:) ---
+    with c_b:
+        # 1. TÍTULO
+        st.markdown('<span class="area-goal" style="font-size: 1.3rem;">Bitácora</span>', unsafe_allow_html=True)
+        
+        # 2. TABLA VISUAL
+        st.markdown('<div style="overflow-x: auto;">', unsafe_allow_html=True)
+        st.dataframe(
+            st.session_state.historial, 
+            width="stretch", 
+            hide_index=True,
+            column_config={
+                "Logro": st.column_config.TextColumn("Logro", width="large"),
+                "Tarea": st.column_config.TextColumn("Tarea", width="medium"),
+                "Fecha": st.column_config.TextColumn("Fecha", width="small")
+            }
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- ESPACIO Y COLUMNAS PARA BOTONES ---
-    st.write("")
-    c_cob, c_lim, c_met = st.columns(3)
+        # 3. ESPACIO Y COLUMNAS PARA BOTONES
+        st.write("")
+        c_cob, c_lim, c_met = st.columns(3)
 
-    # --- BOTÓN: AGREGAR PUNTOS Y GUARDAR EN EXCEL ---
-  # --- BOTÓN: AGREGAR PUNTOS Y GUARDAR EN EXCEL ---
-    with c_cob:
-        if st.button("AGREGAR PTS", width="stretch"):
-            # Verificamos que existan tareas seleccionadas en el diccionario dict_checks
-            if dict_checks:
-                import datetime
-                fecha_actual = datetime.date.today().strftime("%d/%m/%Y")
-                # Obtenemos el nombre del día actual de tu lista de inicialización
-                dia_actual = dias_semana[datetime.date.today().weekday()] 
-                
-                # Procesamos cada tarea marcada para enviarla a la nube
-                for tarea_nombre, info in dict_checks.items():
-                    # 1. Preparamos la fila según el orden de tu Excel (Token, Fecha, Día, Área, Tarea, Logro)
-                    datos_para_nube = [
-                        st.session_state.user_key,   # Columna A: Token
-                        fecha_actual,                # Columna B: Fecha
-                        dia_actual,                  # Columna C: Día
-                        info["area"],                # Columna D: Área (Leído de tu nuevo diccionario)
-                        tarea_nombre,                # Columna E: Tarea
-                        info["logro"]                # Columna F: Logro (Leído de tu nuevo diccionario)
-                    ]
-                    
-                    # 2. Guardamos en Google Sheets usando la función que definiste arriba
-                    guardar_en_historial_nube(datos_para_nube)
-                    
-                    # 3. Actualizamos la tabla visual localmente (st.session_state.historial)
-                    nueva_fila = pd.DataFrame([{
-                        "Fecha": fecha_actual, 
-                        "Día": dia_actual, 
-                        "Área": info["area"], 
-                        "Tarea": tarea_nombre, 
-                        "Logro": info["logro"]
-                    }])
-                    st.session_state.historial = pd.concat([st.session_state.historial, nueva_fila], ignore_index=True)
+        # --- BOTÓN 1: AGREGAR PUNTOS ---
+        with c_cob:
+            if st.button("AGREGAR PTS", key="btn_final_pts", width="stretch"):
+                if not st.session_state.historial.empty:
+                    try:
+                        for index, fila in st.session_state.historial.iterrows():
+                            datos_excel = [
+                                st.session_state.user_key, 
+                                fila["Fecha"], 
+                                fila["Día"], 
+                                fila["Área"], 
+                                fila["Tarea"], 
+                                fila["Logro"]
+                            ]
+                            guardar_en_historial_nube(datos_excel)
+                        
+                        puntos_ganados = len(st.session_state.historial) * 15
+                        st.session_state.puntos += puntos_ganados
+                        
+                        st.success(f"¡Sincronizado! +{puntos_ganados} pts.")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al sincronizar: {e}")
+                else:
+                    st.warning("La bitácora está vacía.")
 
-                # 4. Sumamos puntos (15 por tarea) y lanzamos globos de celebración
-                st.session_state.puntos += len(dict_checks) * 15
-                st.balloons()
-                st.success(f"¡Sincronizado! +{len(dict_checks) * 15} puntos ganados.")
-                st.rerun()
-            else:
-                st.warning("Selecciona al menos una tarea antes de agregar.")
-
-    with c_lim:
-        if st.button("LIMPIAR", width="stretch"):
-            st.session_state.version_tablero += 1
-            st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
-            st.rerun()
+     # --- BOTÓN 2: LIMPIAR TODO ---
+        with c_lim:
+            if st.button("LIMPIAR", key="btn_final_limpiar", width="stretch"):
+                # Aquí YA NO pones "def", solo llamas a la función
+                if limpiar_historial_nube():
+                    st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
+                    st.success("¡Todo limpio!")
+                    time.sleep(1)
+                    st.rerun()
 
     # --- MÉTODO 5-4-3-2-1 (DISEÑO ENFOCADO EN MÓVIL) ---
-    with c_met:
+with c_met:
         if st.button("MÉTODO 5-4-3-2-1", width="stretch"):
             placeholder = st.empty()
             frases = [
