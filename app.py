@@ -733,7 +733,7 @@ with c_g:
                             ]
                             guardar_en_historial_nube(datos_excel)
                         
-                        puntos_ganados = len(st.session_state.historial) * 15
+                        puntos_ganados = len(st.session_state.historial) * 10
                         st.session_state.puntos += puntos_ganados
                         
                         st.success(f"¡Sincronizado! +{puntos_ganados} pts.")
