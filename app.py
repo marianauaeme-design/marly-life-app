@@ -451,40 +451,78 @@ with st.sidebar:
         
         st.divider() # Línea divisoria después del panel
 
-    st.header("Recompensas")
-    st.markdown(f'<div class="marly-puntos-badge"> {st.session_state.puntos} pts</div>', unsafe_allow_html=True)
-    
+        # --- SIDEBAR: GESTIÓN DE TIENDA ---
+with st.sidebar:
+    st.header("Tienda de Recompensas")
+    st.markdown(f'<div class="marly-puntos-badge" style="text-align:center;"> {st.session_state.puntos} pts</div>', unsafe_allow_html=True)
+    st.write("---")
+
+    # 1. Lista de Recompensas existentes (Arriba)
     for item, costo in list(st.session_state.tienda.items()):
-        st.write(f"**{item}** ({costo} pts)")
+        st.markdown(f"**{item}** \n*{costo} pts*")
         c_c, c_b = st.columns(2)
+        
         with c_c:
             st.markdown('<div class="btn-naranja">', unsafe_allow_html=True)
-            if st.button("Canjear", key=f"buy_{item}"):
+            if st.button("Canjear", key=f"side_buy_{item}"):
                 if st.session_state.puntos >= costo:
                     st.session_state.puntos -= costo
-                    st.success("¡Disfrutalo!"); time.sleep(1); st.rerun()
-                else: st.error("¡Faltan puntos!")
+                    st.success("¡Canjeado!")
+                    time.sleep(1)
+                    st.rerun()
+                else: 
+                    st.error("Puntos insuficientes")
             st.markdown('</div>', unsafe_allow_html=True)
+            
         with c_b:
             st.markdown('<div class="btn-oscuro">', unsafe_allow_html=True)
-            if st.button("Eliminar", key=f"del_item_{item}"):
-                del st.session_state.tienda[item]; st.rerun()
+            if st.button("Eliminar", key=f"side_del_{item}"):
+                hoja_t = conectar_google()
+                if hoja_t:
+                    try:
+                        try:
+                            pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
+                        except:
+                            pestana_t = hoja_t.worksheet("Tienda")
+                        
+                        filas = pestana_t.get_all_values()
+                        for i, fila in enumerate(filas, 1):
+                            if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
+                                pestana_t.delete_rows(i)
+                                break
+                        
+                        del st.session_state.tienda[item]
+                        st.rerun()
+                    except:
+                        st.error("Error en la nube")
             st.markdown('</div>', unsafe_allow_html=True)
-    
-with st.sidebar:
-    with st.expander("Añadir Recompensa"):
-        # Todo este bloque debe tener la sangría (4 espacios) para estar dentro del cuadro
-        st.markdown('<span class="area-goal">Premio</span>', unsafe_allow_html=True)
+        st.write("---")
+
+    # 2. Formulario para Añadir Recompensa (Abajo)
+    with st.expander("➕ Añadir Recompensa"):
+        st.markdown('<span class="area-goal">Nombre del Premio</span>', unsafe_allow_html=True)
         n_item = st.text_input("Premio", label_visibility="collapsed", key="new_reward_name")
         
-        st.markdown('<span class="area-goal">Puntos</span>', unsafe_allow_html=True)
+        st.markdown('<span class="area-goal">Costo en Puntos</span>', unsafe_allow_html=True)
         n_costo = st.number_input("Puntos", min_value=10, step=10, label_visibility="collapsed")
         
         if st.button("Guardar Premio", use_container_width=True):
             if n_item:
-                # CORRECCIÓN: Guardamos solo el nombre (n_item) como llave
-                st.session_state.tienda[n_item] = n_costo 
-                st.rerun()
+                hoja_t = conectar_google()
+                if hoja_t:
+                    try:
+                        try:
+                            pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
+                        except:
+                            pestana_t = hoja_t.worksheet("Tienda")
+                        
+                        pestana_t.append_row([st.session_state.user_key, n_item, n_costo])
+                        st.session_state.tienda[n_item] = n_costo 
+                        st.success("¡Guardado!")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
 # --- HEADER PRINCIPAL (FECHA DINÁMICA) ---
 from datetime import datetime
