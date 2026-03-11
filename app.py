@@ -26,6 +26,11 @@ def limpiar_historial_nube():
             st.error(f"Error en la nube: {e}")
     return False
 
+def limpiar_historial_local():
+    """Limpia los datos que se ven en la pantalla del usuario"""
+    st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
+    st.session_state.version_tablero += 1
+
 # --- FUNCIÓN DE CONEXIÓN (Añádela aquí) ---
 def conectar_google():
     try:
@@ -324,20 +329,72 @@ def guardar_en_historial_nube(fila_datos):
 # --- INICIALIZACION DE DATOS ---
 dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
-if 'puntos' not in st.session_state: st.session_state.puntos = 0
+if 'puntos' not in st.session_state:
+    st.session_state.puntos = 0  # Valor por defecto inicial
+if 'version_tablero' not in st.session_state:
+    st.session_state.version_tablero = 0
+    try:
+        hoja_p = conectar_google()
+        try:
+            p_puntos = hoja_p.spreadsheet.worksheet("Puntos")
+        except:
+            p_puntos = hoja_p.worksheet("Puntos")
+            
+        celda_token = p_puntos.find(st.session_state.user_key)
+        if celda_token:
+            valor_puntos = p_puntos.cell(celda_token.row, 2).value
+            st.session_state.puntos = int(valor_puntos) if valor_puntos else 0
+    except Exception as e:
+        st.session_state.puntos = 0
 if 'nombre_usuario' not in st.session_state:
     st.session_state.nombre_usuario = st.session_state.db_usuarios[st.session_state.user_key][0]
 if 'historial' not in st.session_state: 
     st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
 if 'tienda' not in st.session_state: st.session_state.tienda = {"Café Especial": 200, "SkinCare Nuevo": 500}
-if 'recordatorios' not in st.session_state: st.session_state.recordatorios = ["Beber 2L de agua", "Postura recta al trabajar"]
+# --- INICIALIZACIÓN DE ÁREAS (CÓDIGO FINAL SIN AVISOS) ---
 if 'areas' not in st.session_state:
-    st.session_state.areas = {
-        "Espiritu": [[{"nombre": "Lectura Biblia", "dias": dias_semana}], "Crecer en fe"],
-        "Mente": [[{"nombre": "Inglés", "dias": dias_semana}, {"nombre": "Italiano", "dias": dias_semana}], "Fluidez 2026"],
-        "Cuerpo": [[{"nombre": "Ejercicio", "dias": ["Lunes", "Miércoles", "Viernes"]}, {"nombre": "SkinCare", "dias": dias_semana}], "Salud óptima"]
-    }
-if 'version_tablero' not in st.session_state: st.session_state.version_tablero = 0
+    hoja_conf = conectar_google()
+    config_cargada = {}
+    
+    if hoja_conf:
+        try:
+            # Intentamos acceder de forma segura a la pestaña
+            try:
+                libro = hoja_conf.spreadsheet
+                pestana = libro.worksheet("Configuracion")
+            except:
+                pestana = hoja_conf 
+            
+            datos = pestana.get_all_records()
+            
+            for fila in datos:
+                # Usamos .get() para evitar errores si la columna no existe
+                if str(fila.get('Token')) == st.session_state.user_key:
+                    area = fila.get('Area', 'General')
+                    objetivo = fila.get('Objetivo', '')
+                    tarea = fila.get('Tarea', '')
+                    # Si no hay días, ponemos todos por defecto
+                    dias_val = fila.get('Dias', "")
+                    dias = str(dias_val).split(",") if dias_val else dias_semana
+                    
+                    if area not in config_cargada:
+                        config_cargada[area] = [[], objetivo]
+                    
+                    if tarea:
+                        config_cargada[area][0].append({"nombre": tarea, "dias": dias})
+        except Exception as e:
+            # Al dejar esto solo con 'pass', el aviso amarillo desaparece
+            pass
+
+    # Si la nube falló o está vacía, cargamos los valores por defecto
+    if not config_cargada:
+        st.session_state.areas = {
+            "Espiritu": [[{"nombre": "Lectura Biblia", "dias": dias_semana}], "Crecer en fe"],
+            "Mente": [[{"nombre": "Inglés", "dias": dias_semana}], "Fluidez 2026"],
+            "Cuerpo": [[{"nombre": "Ejercicio", "dias": ["Lunes", "Miércoles", "Viernes"]}], "Salud óptima"]
+        }
+    else:
+        st.session_state.areas = config_cargada
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -425,25 +482,9 @@ with st.sidebar:
         
         if st.button("Guardar Premio", use_container_width=True):
             if n_item:
-                # Formato solicitado: Nombre (Puntos)
-                st.session_state.tienda[f"{n_item} ({n_costo})"] = n_costo 
+                # CORRECCIÓN: Guardamos solo el nombre (n_item) como llave
+                st.session_state.tienda[n_item] = n_costo 
                 st.rerun()
-
-    st.divider()
-    st.header("Recordatorios")
-    for idx, rec in enumerate(st.session_state.recordatorios):
-        col_rec, col_del_rec = st.columns([0.8, 0.2])
-        with col_rec:
-            st.markdown(f'<div class="reminder-card">{rec}</div>', unsafe_allow_html=True)
-        with col_del_rec:
-            if st.button("🗑️", key=f"rec_del_{idx}"):
-                st.session_state.recordatorios.pop(idx); st.rerun()
-    
-    with st.expander("Nuevo Recordatorio"):
-        st.markdown('<span class="area-goal">Nota:</span>', unsafe_allow_html=True)
-        nuevo_rec = st.text_input("Nota:", key="rec_input_unique", label_visibility="collapsed")
-        if st.button("Añadir"):
-            if nuevo_rec: st.session_state.recordatorios.append(nuevo_rec); st.rerun()
 
 # --- HEADER PRINCIPAL (FECHA DINÁMICA) ---
 from datetime import datetime
@@ -512,7 +553,7 @@ if st.session_state.mostrar_wrapped:
 # --- SECCIÓN DE GESTIÓN (CARPETA CON ESTILO TARJETA) ---
 with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
     
-    # --- BLOQUE 1: NUEVA ÁREA ---
+   # --- BLOQUE 1: NUEVA ÁREA (ACTUALIZADO PARA GUARDAR EN NUBE) ---
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {ORANGE}; border-bottom: none;">
             <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Nueva Área</span>
@@ -523,13 +564,34 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         na = st.text_input("Nombre de la nueva área:", placeholder="Ej: Salud, Finanzas...", key="na_input")
         st.markdown(f'<span class="area-goal">Objetivo / Meta</span>', unsafe_allow_html=True)
         ng = st.text_input("Define el objetivo:", placeholder="Ej: Estar en forma...", key="ng_input", label_visibility="collapsed")
+        
         if st.button("AÑADIR ÁREA", width="stretch"):
             if na and na not in st.session_state.areas:
-                st.session_state.areas[na] = [[], ng]
-                st.rerun()
+                # 1. Guardar en la nube (Excel)
+                hoja_c = conectar_google()
+                if hoja_c:
+                    try:
+                        # Buscamos la pestaña Configuracion
+                        try:
+                            p_conf = hoja_c.spreadsheet.worksheet("Configuracion")
+                        except:
+                            p_conf = hoja_c.worksheet("Configuracion")
+                        
+                        # Añadimos la fila: Token, Area, Objetivo, Tarea(vacia), Dias(vacia)
+                        p_conf.append_row([st.session_state.user_key, na, ng, "", ""])
+                        
+                        # 2. Actualizar memoria local para que se vea el cambio
+                        st.session_state.areas[na] = [[], ng]
+                        st.success(f"Área '{na}' guardada permanentemente.")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar en la nube: {e}")
+                else:
+                    st.error("No hay conexión con el Excel.")
         st.markdown('</div>', unsafe_allow_html=True)
-
     # --- BLOQUE 2: NUEVA TAREA ---
+    # --- BLOQUE 2: NUEVA TAREA (CONEXIÓN A NUBE) ---
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {ORANGE}; border-bottom: none;">
             <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Nueva Tarea</span>
@@ -546,119 +608,158 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         
         if st.button("GUARDAR TAREA", width="stretch"):
             if nt and dias_tarea:
-                st.session_state.areas[ad][0].append({"nombre": nt, "dias": dias_tarea})
-                st.rerun()
+                # 1. Guardar en la nube (Excel)
+                hoja_c = conectar_google()
+                if hoja_c:
+                    try:
+                        try:
+                            p_conf = hoja_c.spreadsheet.worksheet("Configuracion")
+                        except:
+                            p_conf = hoja_c.worksheet("Configuracion")
+                        
+                        # Convertimos la lista de días ["Lunes", "Martes"] en un texto "Lunes,Martes"
+                        dias_texto = ",".join(dias_tarea)
+                        # Buscamos el objetivo actual de esa área para no dejarlo vacío
+                        objetivo_actual = st.session_state.areas[ad][1]
+                        
+                        # Añadimos fila: Token, Area, Objetivo, Tarea, Dias
+                        p_conf.append_row([st.session_state.user_key, ad, objetivo_actual, nt, dias_texto])
+                        
+                        # 2. Actualizar memoria local
+                        st.session_state.areas[ad][0].append({"nombre": nt, "dias": dias_tarea})
+                        st.success(f"Tarea '{nt}' añadida a {ad}")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar tarea: {e}")
+                else:
+                    st.error("Error de conexión.")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- BLOQUE 3: ELIMINAR ELEMENTOS ---
+    # --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ---
+    RED_ALERT = "#FF4B4B" # El rojo estándar de Streamlit
     st.markdown(f"""
-        <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid #ff4b4b; border-bottom: none;">
+        <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {RED_ALERT}; border-bottom: none;">
             <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Eliminar Elementos</span>
         </div>
     """, unsafe_allow_html=True)
     with st.container():
-        st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid #ff4b4b; border-radius: 0 0 10px 10px; margin-bottom: 20px;">', unsafe_allow_html=True)
-        area_sel_del = st.selectbox("Selecciona Área para modificar:", ["..."] + list(st.session_state.areas.keys()), key="area_del_main")
+        st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {RED_ALERT}; border-radius: 0 0 10px 10px;">', unsafe_allow_html=True)
+        opcion_del = st.radio("¿Qué deseas eliminar?", ["Una Tarea", "Un Área completa"], horizontal=True)
         
-        if area_sel_del != "...":
-            tareas_en_area = [t["nombre"] for t in st.session_state.areas[area_sel_del][0]]
-            if tareas_en_area:
-                tarea_a_borrar = st.selectbox("Selecciona Tarea a eliminar:", ["..."] + tareas_en_area)
-                if st.button("BORRAR TAREA SELECCIONADA", width="stretch"):
-                    if tarea_a_borrar != "...":
-                        st.session_state.areas[area_sel_del][0] = [t for t in st.session_state.areas[area_sel_del][0] if t["nombre"] != tarea_a_borrar]
-                        st.rerun()
+        hoja_c = conectar_google()
+        try:
+            p_conf = hoja_c.spreadsheet.worksheet("Configuracion")
+        except:
+            p_conf = hoja_c.worksheet("Configuracion")
+
+        if opcion_del == "Una Tarea":
+            ae = st.selectbox("Área de la tarea:", list(st.session_state.areas.keys()), key="ae_selector")
+            tareas_disp = [t["nombre"] for t in st.session_state.areas[ae][0]]
+            te = st.selectbox("Selecciona la tarea a eliminar:", tareas_disp, key="te_selector")
             
-            st.divider()
-            if st.button("ELIMINAR ÁREA COMPLETA", width="stretch", type="secondary"):
-                del st.session_state.areas[area_sel_del]
+            if st.button("ELIMINAR TAREA", width="stretch"):
+                # 1. Borrar en Excel
+                celda = p_conf.find(te) # Busca el nombre de la tarea
+                if celda:
+                    p_conf.delete_rows(celda.row)
+                
+                # 2. Borrar en memoria local
+                st.session_state.areas[ae][0] = [t for t in st.session_state.areas[ae][0] if t["nombre"] != te]
+                st.error(f"Tarea '{te}' eliminada.")
+                time.sleep(1)
+                st.rerun()
+
+        else:
+            area_e = st.selectbox("Área a eliminar:", list(st.session_state.areas.keys()), key="area_e_selector")
+            if st.button("ELIMINAR ÁREA", width="stretch"):
+                # 1. Borrar todas las filas de esa área en Excel
+                filas = p_conf.get_all_values()
+                for i, fila in enumerate(reversed(filas), 1):
+                    # Si el Token coincide y el Area coincide
+                    if fila[0] == st.session_state.user_key and fila[1] == area_e:
+                        p_conf.delete_rows(len(filas) - i + 1)
+                
+                # 2. Borrar en memoria local
+                del st.session_state.areas[area_e]
+                st.error(f"Área '{area_e}' y sus tareas eliminadas.")
+                time.sleep(1)
                 st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
             
-# --- VISTA SEMANAL CORREGIDA (DÍAS APILADOS Y DIFERENCIADOS) ---
+# --- VISTA SEMANAL CON DESPLEGABLES Y METAS EN ROJO ---
 dict_checks = {}
 
-for nombre_dia in dias_semana:
-    with st.container():
-        # Título del día en AZUL ESPACIAL para diferenciarlo de la meta roja
+for i, nombre_dia in enumerate(dias_semana):
+    # Creamos el expander para cada día
+    with st.expander(f"📅 {nombre_dia.upper()}", expanded=False):
+        
+        # Título interno con tu estilo de Azul Espacial y Naranja
         st.markdown(f"""
-            <div style="margin-top: 30px; padding: 10px; background-color: #f1f1f1; border-radius: 10px 10px 0 0;">
-                <span style="color: {DEEP_SPACE}; font-size: 1.6rem; font-weight: 800; font-style: italic; text-transform: uppercase;">
-                    {nombre_dia}
+            <div style="padding: 5px; border-bottom: 3px solid {ORANGE}; margin-bottom: 15px;">
+                <span style="color: {DEEP_SPACE}; font-size: 1.4rem; font-weight: 800; font-style: italic;">
+                    ÁREAS Y TAREAS
                 </span>
-                <div style="border-top: 3px solid {ORANGE}; margin-top: 5px; width: 100%;"></div>
             </div>
         """, unsafe_allow_html=True)
         
         v = st.session_state.version_tablero
-        tareas_dia = []
+        tareas_dia_recolectadas = [] 
         
-        # Envolvemos el contenido en un div blanco para que parezca una tarjeta
-        st.markdown('<div style="background-color: white; padding: 15px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; margin-bottom: 20px;">', unsafe_allow_html=True)
-        
-        for area, datos in st.session_state.areas.items():
-            tareas_filtradas = [t for t in datos[0] if nombre_dia in t["dias"]]
-            
+        # --- BUCLE DE ÁREAS ---
+        for nombre_area, info in st.session_state.areas.items():
+            lista_tareas = info[0] 
+            meta = info[1]        
+
+            tareas_filtradas = [
+                t for t in lista_tareas 
+                if isinstance(t, dict) and nombre_dia.lower() in [d.strip().lower() for d in t.get("dias", [])]
+            ]
+             
             if tareas_filtradas:
-                st.markdown(f'<div class="area-header" style="font-weight:bold; color:{BLUE_GREEN}; margin-top:10px;">{area}</div>', unsafe_allow_html=True)
+                # Nombre del Área
+                st.markdown(f'<div style="font-weight:bold; color:{BLUE_GREEN}; margin-top:15px; border-left: 4px solid {BLUE_GREEN}; padding-left: 10px;">{nombre_area.upper()}</div>', unsafe_allow_html=True)
                 
-                # Meta en ROJO (como ya la tenías)
-                meta = datos[1]
-                st.markdown(f'<span class="area-goal">{meta}</span>', unsafe_allow_html=True)
+                # --- META EN ROJO (Actualizado) ---
+                st.markdown(f'<div style="color: #FF0000; font-weight: bold; font-size: 1.0rem; margin-bottom: 10px;">🎯 Meta: {meta}</div>', unsafe_allow_html=True)
                 
                 for idx, tarea_obj in enumerate(tareas_filtradas):
                     tarea_nombre = tarea_obj["nombre"]
-                    k_chk, k_log = f"chk_{nombre_dia}_{tarea_nombre}_v{v}", f"log_{nombre_dia}_{tarea_nombre}_v{v}"
+                    k_chk = f"chk_{nombre_dia}_{nombre_area}_{idx}_v{v}"
+                    k_log = f"log_{nombre_dia}_{nombre_area}_{idx}_v{v}"
                     
-                  # --- DISEÑO MEJORADO PARA MÓVIL (Tarea arriba, inputs abajo) ---
+                    st.markdown(f'<div style="color: {DEEP_SPACE}; font-weight: 600; margin-top: 8px;">{tarea_nombre}</div>', unsafe_allow_html=True)
                     
-                    # 1. Nombre de la tarea con estilo (Azul Oscuro, Negrita, Itálica)
-                    st.markdown(f'<span class="task-label">{tarea_nombre}</span>', unsafe_allow_html=True)
-                    
-                    # 2. Fila de controles (Checkbox y Logro)
-                    c_c, c_l = st.columns([0.2, 0.8]) # El checkbox ocupa poco, el logro más
-                    
+                    c_c, c_l = st.columns([0.15, 0.85]) 
                     with c_c:
-                        # Checkbox sin texto (label="") para que no estorbe
-                        check = st.checkbox("Seleccionar ítem", key=k_chk, label_visibility="collapsed")
-                        
+                        check = st.checkbox("Logrado", key=k_chk, label_visibility="collapsed")
                     with c_l:
                         logro = st.text_input("Logro:", key=k_log, placeholder="¿Qué lograste?", label_visibility="collapsed")
                     
-                    # 3. Guardar estado (esto es vital para que sume puntos)
-                    # 3. Guardar estado (ESTO ES LO QUE ARREGLA EL ERROR)
                     if check: 
-                        # Guardamos en la lista para el historial local
-                        tareas_dia.append({"Área": area, "Tarea": tarea_nombre, "Logro": logro})
-                        
-                        # ACTUALIZACIÓN AQUÍ: Guardamos un diccionario con los datos, no solo True
-                        dict_checks[tarea_nombre] = {
-                            "area": area, 
-                            "logro": logro if logro else "Tarea completada"
-                        }
+                        tareas_dia_recolectadas.append({
+                            "Área": nombre_area, 
+                            "Tarea": tarea_nombre, 
+                            "Logro": logro if logro else "Tarea completada"
+                        })
 
-   # --- BOTÓN DE REGISTRO DIARIO (SOLO BITÁCORA VISUAL) ---
-        st.markdown('<div class="btn-naranja" style="margin-top:15px;">', unsafe_allow_html=True)
-        
-        if st.button(f"GUARDAR {nombre_dia.upper()}", key=f"s_{nombre_dia}_{v}", width="stretch"):
-            if tareas_dia:
-                # 1. Creamos el DataFrame con lo recolectado en el bucle actual
-                df_hoy = pd.DataFrame(tareas_dia)
+        # --- BOTÓN DE GUARDAR ---
+        st.markdown('<div style="margin-top:20px;">', unsafe_allow_html=True)
+        if st.button(f"FINALIZAR {nombre_dia.upper()}", key=f"btn_save_{nombre_dia}_{v}", use_container_width=True):
+            if tareas_dia_recolectadas:
+                df_hoy = pd.DataFrame(tareas_dia_recolectadas)
                 df_hoy["Fecha"] = datetime.now().strftime("%d/%m/%Y")
                 df_hoy["Día"] = nombre_dia
                 
-                # 2. Añadimos al historial de la sesión (Lo que se ve en la tabla de Bitácora)
                 st.session_state.historial = pd.concat([st.session_state.historial, df_hoy], ignore_index=True)
                 
-                # 3. Mensaje de confirmación sin sumar puntos aún
-                st.success(f"¡{nombre_dia} añadido a la Bitácora visual!")
-                time.sleep(0.5)
+                st.success(f"¡{nombre_dia} guardado en la Bitácora!")
+                time.sleep(1)
                 st.rerun()
             else:
-                st.warning("No hay tareas marcadas para este día.")
-                
-        st.markdown('</div></div>', unsafe_allow_html=True)
-
+                st.warning("No hay tareas seleccionadas.")
+        st.markdown('</div>', unsafe_allow_html=True)
 # --- ANALÍTICA ---
 st.write("---")
 c_g, c_b = st.columns([1, 1])
@@ -717,42 +818,73 @@ with c_g:
         st.write("")
         c_cob, c_lim, c_met = st.columns(3)
 
-        # --- BOTÓN 1: AGREGAR PUNTOS ---
-        with c_cob:
-            if st.button("AGREGAR PTS", key="btn_final_pts", width="stretch"):
-                if not st.session_state.historial.empty:
-                    try:
-                        for index, fila in st.session_state.historial.iterrows():
-                            datos_excel = [
-                                st.session_state.user_key, 
-                                fila["Fecha"], 
-                                fila["Día"], 
-                                fila["Área"], 
-                                fila["Tarea"], 
-                                fila["Logro"]
-                            ]
-                            guardar_en_historial_nube(datos_excel)
-                        
-                        puntos_ganados = len(st.session_state.historial) * 10
-                        st.session_state.puntos += puntos_ganados
-                        
-                        st.success(f"¡Sincronizado! +{puntos_ganados} pts.")
-                        time.sleep(1)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al sincronizar: {e}")
-                else:
-                    st.warning("La bitácora está vacía.")
+       # --- BOTÓN 1: AGREGAR PUNTOS (CON SINCRONIZACIÓN DE SALDO TOTAL) ---
+with c_cob:
+    if st.button("AGREGAR PTS", key="btn_final_pts", width="stretch"):
+        if not st.session_state.historial.empty:
+            try:
+                # 1. Guardar cada tarea en la pestaña de Historial
+                for index, fila in st.session_state.historial.iterrows():
+                    datos_excel = [
+                        st.session_state.user_key, 
+                        fila["Fecha"], 
+                        fila["Día"], 
+                        fila["Área"], 
+                        fila["Tarea"], 
+                        fila["Logro"]
+                    ]
+                    guardar_en_historial_nube(datos_excel)
+                
+                # 2. Calcular y actualizar puntos localmente
+                puntos_ganados = len(st.session_state.historial) * 10
+                st.session_state.puntos += puntos_ganados
+                st.session_state.version_tablero += 1
 
-     # --- BOTÓN 2: LIMPIAR TODO ---
-        with c_lim:
-            if st.button("LIMPIAR", key="btn_final_limpiar", width="stretch"):
-                # Aquí YA NO pones "def", solo llamas a la función
-                if limpiar_historial_nube():
-                    st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
-                    st.success("¡Todo limpio!")
-                    time.sleep(1)
-                    st.rerun()
+                # 3. --- SINCRONIZAR SALDO TOTAL EN PESTAÑA "PUNTOS" ---
+                hoja_p = conectar_google()
+                try:
+                    try:
+                        p_puntos = hoja_p.spreadsheet.worksheet("Puntos")
+                    except:
+                        p_puntos = hoja_p.worksheet("Puntos")
+                    
+                    # Buscamos si el Token ya existe en la columna A
+                    celda_token = p_puntos.find(st.session_state.user_key)
+                    
+                    if celda_token:
+                        # Si existe, actualizamos la columna B (celda de al lado)
+                        p_puntos.update_cell(celda_token.row, 2, st.session_state.puntos)
+                    else:
+                        # Si es la primera vez del usuario, creamos su registro
+                        p_puntos.append_row([st.session_state.user_key, st.session_state.puntos])
+                except Exception as e_pts:
+                    st.warning(f"Historial guardado, pero no se pudo actualizar el saldo total: {e_pts}")
+
+                # 4. Finalizar
+                st.success(f"¡Sincronizado! +{puntos_ganados} pts.")
+                time.sleep(1)
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Error al sincronizar: {e}")
+        else:
+            st.warning("La bitácora está vacía.")
+
+with c_lim:
+    # Agregamos un checkbox o un mensaje de advertencia antes de limpiar
+    if st.button("LIMPIAR TODO", key="btn_final_limpiar", use_container_width=True):
+        with st.spinner("Limpiando registros..."):
+            # Intentamos limpiar la nube primero (Google Sheets)
+            if limpiar_historial_nube(): 
+                # Si la nube se limpió, procedemos con lo local
+                st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
+                st.session_state.version_tablero += 1
+                
+                st.success("¡Historial eliminado con éxito!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("No se pudo conectar con la nube. Intenta de nuevo.")
 
     # --- MÉTODO 5-4-3-2-1 (DISEÑO ENFOCADO EN MÓVIL) ---
 with c_met:
