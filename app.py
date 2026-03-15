@@ -8,8 +8,10 @@ import string
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- ESTO VA AL PRINCIPIO DEL ARCHIVO (Línea 50 aprox) ---
+# --- REEMPLAZA TUS FUNCIONES DE LIMPIEZA POR ESTAS ---
+
 def limpiar_historial_nube():
+    """Limpia el historial en la nube SOLO para el usuario actual"""
     documento = conectar_google()
     if documento:
         try:
@@ -18,17 +20,37 @@ def limpiar_historial_nube():
             except:
                 pestana = documento.worksheet("Historial")
             
-            # Borra contenido manteniendo encabezados
-            if pestana.row_count > 1:
-                pestana.delete_rows(2, pestana.row_count)
+            # 1. Obtenemos todos los datos actuales de la hoja
+            filas = pestana.get_all_values()
+            if len(filas) <= 1:
+                return True # La hoja ya está vacía o solo tiene encabezados
+            
+            encabezados = filas[0]
+            
+            # 2. FILTRADO INTELIGENTE:
+            # Creamos una lista nueva que incluya los encabezados y 
+            # TODAS las filas que NO sean del usuario actual.
+            # (Asumimos que el Token está en la primera columna, índice 0)
+            nuevas_filas = [encabezados]
+            for fila in filas[1:]:
+                if fila[0] != st.session_state.user_key:
+                    nuevas_filas.append(fila)
+            
+            # 3. Actualizamos la nube
+            pestana.clear()
+            pestana.update('A1', nuevas_filas)
+            
+            # 4. Avisamos a la app que debe refrescar la vista local
+            st.session_state.actualizar_historial = True
             return True
         except Exception as e:
-            st.error(f"Error en la nube: {e}")
+            st.error(f"Error al limpiar en la nube: {e}")
     return False
 
 def limpiar_historial_local():
-    """Limpia los datos que se ven en la pantalla del usuario"""
-    st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
+    """Limpia la vista inmediata en la pantalla"""
+    # Reiniciamos el DataFrame a ceros
+    st.session_state.historial = pd.DataFrame(columns=["Token", "Fecha", "Día", "Área", "Tarea", "Logro"])
     st.session_state.version_tablero += 1
 
 # --- FUNCIÓN DE CONEXIÓN (Añádela aquí) ---
@@ -348,8 +370,32 @@ if 'version_tablero' not in st.session_state:
         st.session_state.puntos = 0
 if 'nombre_usuario' not in st.session_state:
     st.session_state.nombre_usuario = st.session_state.db_usuarios[st.session_state.user_key][0]
-if 'historial' not in st.session_state: 
-    st.session_state.historial = pd.DataFrame(columns=["Fecha", "Día", "Área", "Tarea", "Logro"])
+# --- INICIALIZACIÓN DEL HISTORIAL PERSISTENTE ---
+if 'historial' not in st.session_state or st.session_state.get('actualizar_historial', False):
+    hoja_h = conectar_google()
+    if hoja_h:
+        try:
+            # Intentamos acceder a la pestaña Historial
+            try:
+                pestana_h = hoja_h.spreadsheet.worksheet("Historial")
+            except:
+                pestana_h = hoja_h.worksheet("Historial")
+            
+            # Traemos todos los datos
+            todos_los_datos = pd.DataFrame(pestana_h.get_all_records())
+            
+            if not todos_los_datos.empty:
+                # FILTRAR: Solo mostrar lo que pertenece al Token del usuario actual
+                # Asegúrate de que tu columna en Excel se llame exactamente "Token"
+                mi_historial = todos_los_datos[todos_los_datos['Token'] == st.session_state.user_key]
+                st.session_state.historial = mi_historial
+            else:
+                st.session_state.historial = pd.DataFrame(columns=["Token", "Fecha", "Día", "Área", "Tarea", "Logro"])
+            
+            st.session_state.actualizar_historial = False
+        except Exception as e:
+            st.error(f"Error al cargar bitácora: {e}")
+            st.session_state.historial = pd.DataFrame(columns=["Token", "Fecha", "Día", "Área", "Tarea", "Logro"])
 if 'tienda' not in st.session_state: st.session_state.tienda = {"Café Especial": 200, "SkinCare Nuevo": 500}
 # --- INICIALIZACIÓN DE ÁREAS (CÓDIGO FINAL SIN AVISOS) ---
 if 'areas' not in st.session_state:
@@ -967,4 +1013,5 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
+
 
