@@ -775,15 +775,20 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
 # --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ---
     RED_ALERT = "#FF4B4B" 
 
-    # Aplicamos el CSS de forma quirúrgica solo a los elementos de este bloque
+    # INYECCIÓN DE CSS PARA FORZAR EL ROJO EN RADIO Y SELECTBOX
     st.markdown(f"""
         <style>
-        /* Color rojo solo para las opciones del radio (Una Tarea / Área) */
+        /* Color de las opciones del Radio Button */
+        div[data-testid="stWidgetLabel"] p {{ color: {RED_ALERT} !important; }}
+        label[data-testid="stWidgetLabel"] p {{ color: {RED_ALERT} !important; }}
+        
+        /* Color de los textos de las opciones (Una Tarea, etc) */
         div[data-testid="stRadio"] label p {{
             color: {RED_ALERT} !important;
+            font-weight: bold !important;
         }}
 
-        /* Color rojo solo para el texto seleccionado dentro de los selectores */
+        /* Color del texto dentro de los Selectbox (Ejercicio Diario, etc) */
         div[data-testid="stSelectbox"] div[data-baseweb="select"] div {{
             color: {RED_ALERT} !important;
         }}
