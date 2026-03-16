@@ -429,13 +429,14 @@ if 'historial' not in st.session_state or st.session_state.get('actualizar_histo
             st.session_state.historial = pd.DataFrame(columns=["Token", "Fecha", "Día", "Área", "Tarea", "Logro"])
 if 'tienda' not in st.session_state: st.session_state.tienda = {"Café Especial": 200, "SkinCare Nuevo": 500}
 # --- INICIALIZACIÓN DE ÁREAS (CÓDIGO FINAL SIN AVISOS) ---
+# --- INICIALIZACIÓN DE ÁREAS (SINCRONIZACIÓN TOTAL) ---
+# Forzamos la carga desde la nube si la sesión es nueva
 if 'areas' not in st.session_state:
     hoja_conf = conectar_google()
     config_cargada = {}
     
     if hoja_conf:
         try:
-            # Intentamos acceder de forma segura a la pestaña
             try:
                 libro = hoja_conf.spreadsheet
                 pestana = libro.worksheet("Configuracion")
@@ -444,37 +445,39 @@ if 'areas' not in st.session_state:
             
             datos = pestana.get_all_records()
             
+            # Recorremos todas las filas del Excel
             for fila in datos:
-                # Usamos .get() para evitar errores si la columna no existe
+                # Solo cargamos lo que pertenece al usuario actual
                 if str(fila.get('Token')) == st.session_state.user_key:
                     area = fila.get('Area', 'General')
                     objetivo = fila.get('Objetivo', '')
                     tarea = fila.get('Tarea', '')
-                    # Si no hay días, ponemos todos por defecto
                     dias_val = fila.get('Dias', "")
+                    
+                    # Lógica de días (la que corregimos antes)
                     if dias_val:
                         dias = [d.strip() for d in str(dias_val).split(",")]
                     else:
                         dias = []
                     
                     if area not in config_cargada:
-                       config_cargada[area] = [[], objetivo]
+                        config_cargada[area] = [[], objetivo]
                     
                     if tarea:
                         config_cargada[area][0].append({"nombre": tarea, "dias": dias})
         except Exception as e:
-            # Al dejar esto solo con 'pass', el aviso amarillo desaparece
             pass
 
-    # Si la nube falló o está vacía, cargamos los valores por defecto
-    if not config_cargada:
+    # Si la nube tiene datos, los usamos. Si no, usamos los de fábrica.
+    if config_cargada:
+        st.session_state.areas = config_cargada
+    else:
+        # Solo si el usuario es totalmente nuevo y no tiene nada en el Excel
         st.session_state.areas = {
             "Espiritu": [[{"nombre": "Lectura Biblia", "dias": dias_semana}], "Crecer en fe"],
             "Mente": [[{"nombre": "Inglés", "dias": dias_semana}], "Fluidez 2026"],
             "Cuerpo": [[{"nombre": "Ejercicio", "dias": ["Lunes", "Miércoles", "Viernes"]}], "Salud óptima"]
         }
-    else:
-        st.session_state.areas = config_cargada
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -492,8 +495,9 @@ with st.sidebar:
     st.divider()
     
     if st.button("Cerrar Sesión"):
-        st.session_state.autenticado = False
-        st.rerun()
+         for key in list(st.session_state.keys()):
+           del st.session_state[key]
+    st.rerun()
     
     with st.expander("Seguridad: Cambiar mi PIN"):
         st.markdown('<span class="area-goal">PIN Nuevo (4 dígitos)</span>', unsafe_allow_html=True)
@@ -1083,5 +1087,3 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
-
-
