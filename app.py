@@ -782,11 +782,13 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
     """, unsafe_allow_html=True)
 
     with st.container():
+        # Abrimos el contenedor principal blanco
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {RED_ALERT}; border-radius: 0 0 10px 10px;">', unsafe_allow_html=True)
         
-        # --- PREGUNTA 1 EN ROJO ---
-        st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px;">¿Qué deseas eliminar?</p>', unsafe_allow_html=True)
-        opcion_del = st.radio("", ["Una Tarea", "Un Área completa"], horizontal=True, label_visibility="collapsed")
+        # --- PREGUNTA 1: Tarea o Área ---
+        # Usamos un div con margin-top para que no se pegue al borde en el celular
+        st.markdown(f'<div style="margin-top: 10px;"><p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px;">¿Qué deseas eliminar?</p></div>', unsafe_allow_html=True)
+        opcion_del = st.radio("", ["Una Tarea", "Un Área completa"], horizontal=True, label_visibility="collapsed", key="del_radio_mobile")
         
         hoja_c = conectar_google()
         try:
@@ -795,19 +797,18 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
             p_conf = hoja_c.worksheet("Configuracion")
 
         if opcion_del == "Una Tarea":
-            # --- PREGUNTA 2 EN ROJO ---
-            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px; margin-top: 15px;">Área de la tarea:</p>', unsafe_allow_html=True)
+            # --- PREGUNTA 2: Área ---
+            st.markdown(f'<div style="margin-top: 20px;"><p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px;">Área de la tarea:</p></div>', unsafe_allow_html=True)
             ae = st.selectbox("", list(st.session_state.areas.keys()), key="ae_selector", label_visibility="collapsed")
             
             tareas_disp = [t["nombre"] for t in st.session_state.areas[ae][0]]
             
-            # --- PREGUNTA 3 EN ROJO ---
-            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px; margin-top: 15px;">Selecciona la tarea a eliminar:</p>', unsafe_allow_html=True)
+            # --- PREGUNTA 3: Tarea ---
+            st.markdown(f'<div style="margin-top: 20px;"><p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px;">Selecciona la tarea a eliminar:</p></div>', unsafe_allow_html=True)
             te = st.selectbox("", tareas_disp, key="te_selector", label_visibility="collapsed")
             
-            st.write(" ") # Espacio antes del botón
+            st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True) # Espacio extra para el celular
             if st.button("ELIMINAR TAREA", width="stretch"):
-                # ... (resto de tu lógica de borrado de tarea) ...
                 celda = p_conf.find(te)
                 if celda:
                     p_conf.delete_rows(celda.row)
@@ -817,13 +818,12 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
                 st.rerun()
 
         else:
-            # --- PREGUNTA ÁREA EN ROJO ---
-            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px; margin-top: 15px;">Área a eliminar:</p>', unsafe_allow_html=True)
+            # --- PREGUNTA ÁREA ---
+            st.markdown(f'<div style="margin-top: 20px;"><p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px;">Área a eliminar:</p></div>', unsafe_allow_html=True)
             area_e = st.selectbox("", list(st.session_state.areas.keys()), key="area_e_selector", label_visibility="collapsed")
             
-            st.write(" ")
+            st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
             if st.button("ELIMINAR ÁREA", width="stretch"):
-                # ... (resto de tu lógica de borrado de área) ...
                 filas = p_conf.get_all_values()
                 for i, fila in enumerate(reversed(filas), 1):
                     if fila[0] == st.session_state.user_key and fila[1] == area_e:
@@ -832,7 +832,8 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
                 st.error(f"Área '{area_e}' y sus tareas eliminadas.")
                 time.sleep(1)
                 st.rerun()
-                
+        
+        # Cerramos el contenedor blanco
         st.markdown('</div>', unsafe_allow_html=True)
             
 # --- VISTA SEMANAL CON DESPLEGABLES Y METAS EN ROJO ---
