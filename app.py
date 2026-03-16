@@ -8,6 +8,25 @@ import string
 import gspread
 from google.oauth2.service_account import Credentials
 
+
+def generar_feedback_ia(df_historial, nombre_usuario):
+    if df_historial.empty:
+        return f"¡Bienvenida, {nombre_usuario}! El primer paso para el éxito es el registro. ¡Hoy es un excelente día para empezar tu primera victoria estratégica!"
+    
+    # 1. Analizamos datos reales
+    total_logros = len(df_historial)
+    area_mas_activa = df_historial['Área'].value_counts().idxmax()
+    tareas_hoy = df_historial[df_historial['Fecha'] == ahora_mx.strftime('%Y-%m-%d')]
+    conteo_hoy = len(tareas_hoy)
+    
+    # 2. Lógica de "Personalidad" de la IA
+    if conteo_hoy >= 3:
+        return f"Impresionante nivel de ejecución, {nombre_usuario}. Has registrado {conteo_hoy} victorias hoy. Tu enfoque en '{area_mas_activa}' está dando resultados. Mantén este estándar de excelencia."
+    elif total_logros > 10:
+        return f"La constancia es tu mayor activo. Con {total_logros} logros acumulados, estás construyendo una estructura de éxito sólida. Sigue dominando el área de '{area_mas_activa}'."
+    else:
+        return f"Buen progreso en '{area_mas_activa}', {nombre_usuario}. Cada registro es una semilla para tu objetivo. No cuentes los días, haz que los días cuenten."
+
 # --- REEMPLAZA TUS FUNCIONES DE LIMPIEZA POR ESTAS ---
 
 def limpiar_historial_nube():
@@ -214,7 +233,7 @@ st.markdown(f"""
 if 'db_usuarios' not in st.session_state:
     # 1. Primero agregamos tus accesos fijos (los que no están en el Excel)
     st.session_state.db_usuarios = {
-        "ADMIN123": ["Marianita", "2026"]
+        "ADMIN123": ["Mariana", "2026"]
     }
     
     # 2. Ahora leemos a todos los clientes que están guardados en el Excel
@@ -327,25 +346,48 @@ if st.session_state.autenticado:
 
 def guardar_en_historial_nube(fila_datos):
     """
-    fila_datos debe ser una lista: [Token, Fecha, Día, Área, Tarea, Logro]
+    fila_datos: [Token, Fecha, Día, Área, Tarea, Logro]
+    Evita guardar si la tarea ya fue registrada hoy para este usuario.
     """
-    # Intentamos conectar
     documento = conectar_google() 
     
     if documento:
         try:
-            # Si conectar_google() devuelve el libro completo, buscamos la pestaña
-            # Si ya devuelve una pestaña, intentamos usar el Spreadsheet padre
+            # Intentamos obtener la pestaña "Historial"
             try:
                 pestana_historial = documento.spreadsheet.worksheet("Historial")
             except:
-                # Si lo anterior falla, es que 'documento' ya es el libro
                 pestana_historial = documento.worksheet("Historial")
-                
+            
+            # --- VALIDACIÓN DE DUPLICADOS (NUEVO) ---
+            # 1. Obtenemos todos los registros para comparar
+            registros_actuales = pestana_historial.get_all_values()
+            
+            # 2. Datos de la tarea que intentamos subir
+            t_nuevo = str(fila_datos[0]) # Token
+            f_nueva = str(fila_datos[1]) # Fecha
+            a_nueva = str(fila_datos[3]) # Área
+            tr_nueva = str(fila_datos[4]) # Tarea
+
+            # 3. Revisamos fila por fila en el Excel
+            for fila in registros_actuales:
+                if (len(fila) >= 5 and 
+                    str(fila[0]) == t_nuevo and 
+                    str(fila[1]) == f_nueva and 
+                    str(fila[3]) == a_nueva and 
+                    str(fila[4]) == tr_nueva):
+                    
+                    # Si coincide todo, avisamos y salimos sin guardar
+                    st.warning(f"La tarea '{tr_nueva}' ya está registrada para hoy.")
+                    return False 
+
+            # --- SI NO ES DUPLICADO, GUARDAMOS ---
             pestana_historial.append_row(fila_datos)
             return True
+
         except Exception as e:
-            st.error(f"Error al guardar en Historial: {e}")
+            st.error(f"Error en la bitácora: {e}")
+            
     return False
 
 # --- INICIALIZACION DE DATOS ---
@@ -445,10 +487,17 @@ if 'areas' not in st.session_state:
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("Perfil")
-    nuevo_nom = st.text_input("Tu Nombre", value=st.session_state.nombre_usuario)
-    if nuevo_nom != st.session_state.nombre_usuario:
-        st.session_state.nombre_usuario = nuevo_nom
-        st.session_state.db_usuarios[st.session_state.user_key][0] = nuevo_nom
+    
+    # Diseño minimalista con el nombre en rojo (No editable)
+    st.markdown(f"""
+    <div style="padding: 10px; border-radius: 10px; border: 1px solid rgba(255,0,0,0.2); background-color: rgba(255,0,0,0.05);">
+        <span style="color: #FF4B4B; font-weight: 800; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px;">
+            {st.session_state.nombre_usuario}
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.divider()
     
     if st.button("Cerrar Sesión"):
         st.session_state.autenticado = False
@@ -500,9 +549,20 @@ with st.sidebar:
         # --- SIDEBAR: GESTIÓN DE TIENDA ---
 with st.sidebar:
     st.header("Tienda de Recompensas")
-    st.markdown(f'<div class="marly-puntos-badge" style="text-align:center;"> {st.session_state.puntos} pts</div>', unsafe_allow_html=True)
+    
+    # Diseño de puntos en ROJO para hacer match con el perfil
+    st.markdown(f"""
+    <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 75, 75, 0.3); background-color: rgba(255, 75, 75, 0.05); text-align: center;">
+        <small style="color: #FF4B4B; text-transform: uppercase; letter-spacing: 2px; font-size: 0.7rem; display: block; margin-bottom: 5px; font-weight: 600;">
+            Créditos Acumulados
+        </small>
+        <span style="color: #FF4B4B; font-weight: 900; font-size: 2rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+            {st.session_state.puntos} <span style="font-size: 1.1rem;">PTS</span>
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.write("---")
-
     # 1. Lista de Recompensas existentes (Arriba)
     for item, costo in list(st.session_state.tienda.items()):
         st.markdown(f"**{item}** \n*{costo} pts*")
@@ -570,18 +630,23 @@ with st.sidebar:
                     except Exception as e:
                         st.error(f"Error: {e}")
 
-# --- HEADER PRINCIPAL (FECHA DINÁMICA) ---
-from datetime import datetime
+# --- HEADER PRINCIPAL (FECHA DINÁMICA CORREGIDA CON ZONA HORARIA MX) ---
+import pytz
 
-# Diccionario para traducir el mes a español manualmente si no quieres configurar el locale
+# Definimos la zona horaria de México para evitar el desfase en el celular
+zona_horaria = pytz.timezone('America/Mexico_City')
+ahora_mx = datetime.now(zona_horaria)
+
 meses_es = {
     1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
     7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
 }
 
-ahora = datetime.now()
-dia_hoy = ahora.day
-mes_hoy = meses_es[ahora.month]
+dias_semana_nombres = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+dia_hoy = ahora_mx.day
+mes_hoy = meses_es[ahora_mx.month]
+dia_hoy_nombre = dias_semana_nombres[ahora_mx.weekday()]
 
 st.markdown(f"""
 <div style="padding: 15px; background-color: #f1f1f1; border-radius: 15px 15px 0 0; border: 2px solid {ORANGE}; border-bottom: none; text-align: center; margin-top: 10px;">
@@ -591,46 +656,44 @@ st.markdown(f"""
 </div>
 <div style="background-color: white; padding: 10px; border-radius: 0 0 15px 15px; border: 2px solid {ORANGE}; text-align: center; margin-bottom: 20px;">
     <p style='color: #FF0000; font-weight: 800; font-style: italic; margin: 0;'>
-        Hoy es {dia_hoy} de {mes_hoy}
+        Hoy es {dia_hoy_nombre}, {dia_hoy} de {mes_hoy}
     </p>
 </div>
 """, unsafe_allow_html=True)
 
 # --- LOGICA DEL FEEDBACK (PARA QUE NO SE BORRE) ---
+# --- LOGICA DEL FEEDBACK INTELIGENTE ---
 if 'mostrar_wrapped' not in st.session_state:
     st.session_state.mostrar_wrapped = False
 
-if st.button("SOLICITAR FEEDBACK", width="stretch"):
-    frases_motivadoras = [
-        "No te detengas cuando estés cansada, detente cuando hayas terminado.",
-        "La disciplina es el puente entre las metas y los logros.",
-        "Tu futuro se crea por lo que haces hoy, no mañana.",
-        "La excelencia es tu estándar.",
-        "No cuentes los días, haz que los días cuenten."
-    ]
-    st.session_state.frase_del_dia = random.choice(frases_motivadoras)
+if st.button("SOLICITAR FEEDBACK IA", width="stretch"):
+    # Llamamos a nuestra función analítica
+    st.session_state.frase_del_dia = generar_feedback_ia(
+        st.session_state.historial, 
+        st.session_state.nombre_usuario
+    )
     st.session_state.mostrar_wrapped = True
-    st.rerun() # Forzamos el refresco para mostrar la tarjeta
+    st.rerun()
 
 # --- TARJETA DE FEEDBACK (DISEÑO LIMPIO) ---
 if st.session_state.mostrar_wrapped:
     victorias = len(st.session_state.historial)
-    frase_actual = st.session_state.get('frase_del_dia', "¡Sigue adelante!")
+    frase_actual = st.session_state.get('frase_del_dia', "Analizando datos...")
     
     st.markdown(f"""
-<div style="background-color: {DEEP_SPACE}; padding: 30px; border-radius: 15px; border: 2px solid {AMBER}; text-align: center; margin-bottom: 20px;">
-    <h2 style="color: {AMBER}; font-style: italic; margin-bottom: 15px;">Feedback de Alto Nivel</h2>
-    <p style="color: white; font-size: 1.3rem; font-weight: 800; font-style: italic; line-height: 1.5; margin-bottom: 20px;">
-        "{frase_actual}"
-    </p>
-    <div style="border-top: 2px solid {ORANGE}; margin-bottom: 20px;"></div>
-    <p style="color: {SKY_BLUE}; font-size: 1.1rem; margin: 0;">
-        Has alcanzado <b>{victorias}</b> victorias estratégicas.
-    </p>
-</div>
-""", unsafe_allow_html=True)
+    <div style="background-color: {DEEP_SPACE}; padding: 30px; border-radius: 15px; border: 2px solid {AMBER}; text-align: center; margin-bottom: 20px;">
+        <h2 style="color: {AMBER}; font-style: italic; margin-bottom: 15px; font-size: 1rem;">ANÁLISIS DE RENDIMIENTO PERSONALIZADO</h2>
+        <p style="color: white; font-size: 1.2rem; font-weight: 500; font-style: italic; line-height: 1.6; margin-bottom: 20px;">
+            "{frase_actual}"
+        </p>
+        <div style="border-top: 1px solid {ORANGE}; margin-bottom: 20px; opacity: 0.3;"></div>
+        <p style="color: {SKY_BLUE}; font-size: 0.9rem; margin: 0; text-transform: uppercase; letter-spacing: 1px;">
+            Métricas: <b>{victorias}</b> registros totales en sistema
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    if st.button("VOLVER AL PLAN", width="stretch"):
+    if st.button("VOLVER AL PLAN SECTORIAL", width="stretch"):
         st.session_state.mostrar_wrapped = False
         st.rerun()
 
@@ -777,7 +840,7 @@ dict_checks = {}
 
 for i, nombre_dia in enumerate(dias_semana):
     # Creamos el expander para cada día
-    with st.expander(f"📅 {nombre_dia.upper()}", expanded=False):
+    with st.expander(f"🔴 {nombre_dia.upper()}", expanded=False):
         
         # Título interno con tu estilo de Azul Espacial y Naranja
         st.markdown(f"""
@@ -902,12 +965,15 @@ with c_g:
         st.write("")
         c_cob, c_lim, c_met = st.columns(3)
 
-       # --- BOTÓN 1: AGREGAR PUNTOS (CON SINCRONIZACIÓN DE SALDO TOTAL) ---
+# --- BOTÓN 1: AGREGAR PUNTOS (CON VALIDACIÓN DE DUPLICADOS) ---
 with c_cob:
     if st.button("AGREGAR PTS", key="btn_final_pts", width="stretch"):
         if not st.session_state.historial.empty:
             try:
-                # 1. Guardar cada tarea en la pestaña de Historial
+                puntos_a_sumar_hoy = 0
+                tareas_nuevas_contadas = 0
+
+                # 1. Procesar cada tarea una por una
                 for index, fila in st.session_state.historial.iterrows():
                     datos_excel = [
                         st.session_state.user_key, 
@@ -917,37 +983,43 @@ with c_cob:
                         fila["Tarea"], 
                         fila["Logro"]
                     ]
-                    guardar_en_historial_nube(datos_excel)
+                    
+                    # Llamamos a la función que ya tiene el buscador de duplicados
+                    fue_guardado = guardar_en_historial_nube(datos_excel)
+                    
+                    if fue_guardado:
+                        # Solo sumamos puntos si la función devolvió True (no era duplicado)
+                        puntos_a_sumar_hoy += 10
+                        tareas_nuevas_contadas += 1
                 
-                # 2. Calcular y actualizar puntos localmente
-                puntos_ganados = len(st.session_state.historial) * 10
-                st.session_state.puntos += puntos_ganados
-                st.session_state.version_tablero += 1
+                if tareas_nuevas_contadas > 0:
+                    # 2. Actualizar puntos localmente
+                    st.session_state.puntos += puntos_a_sumar_hoy
+                    st.session_state.version_tablero += 1
 
-                # 3. --- SINCRONIZAR SALDO TOTAL EN PESTAÑA "PUNTOS" ---
-                hoja_p = conectar_google()
-                try:
+                    # 3. --- SINCRONIZAR SALDO TOTAL EN PESTAÑA "PUNTOS" ---
+                    hoja_p = conectar_google()
                     try:
-                        p_puntos = hoja_p.spreadsheet.worksheet("Puntos")
-                    except:
-                        p_puntos = hoja_p.worksheet("Puntos")
+                        try:
+                            p_puntos = hoja_p.spreadsheet.worksheet("Puntos")
+                        except:
+                            p_puntos = hoja_p.worksheet("Puntos")
+                        
+                        celda_token = p_puntos.find(st.session_state.user_key)
+                        
+                        if celda_token:
+                            p_puntos.update_cell(celda_token.row, 2, st.session_state.puntos)
+                        else:
+                            p_puntos.append_row([st.session_state.user_key, st.session_state.puntos])
+                        
+                        st.success(f"¡Sincronizado! +{puntos_a_sumar_hoy} pts por {tareas_nuevas_contadas} tareas nuevas.")
+                    except Exception as e_pts:
+                        st.warning(f"Historial guardado, pero error en saldo: {e_pts}")
                     
-                    # Buscamos si el Token ya existe en la columna A
-                    celda_token = p_puntos.find(st.session_state.user_key)
-                    
-                    if celda_token:
-                        # Si existe, actualizamos la columna B (celda de al lado)
-                        p_puntos.update_cell(celda_token.row, 2, st.session_state.puntos)
-                    else:
-                        # Si es la primera vez del usuario, creamos su registro
-                        p_puntos.append_row([st.session_state.user_key, st.session_state.puntos])
-                except Exception as e_pts:
-                    st.warning(f"Historial guardado, pero no se pudo actualizar el saldo total: {e_pts}")
-
-                # 4. Finalizar
-                st.success(f"¡Sincronizado! +{puntos_ganados} pts.")
-                time.sleep(1)
-                st.rerun()
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.info("No hay tareas nuevas para sumar. Todas ya estaban en el historial.")
                 
             except Exception as e:
                 st.error(f"Error al sincronizar: {e}")
