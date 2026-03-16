@@ -345,31 +345,22 @@ if st.session_state.autenticado:
         st.stop()
 
 def guardar_en_historial_nube(fila_datos):
-    """
-    fila_datos: [Token, Fecha, Día, Área, Tarea, Logro]
-    Evita guardar si la tarea ya fue registrada hoy para este usuario.
-    """
     documento = conectar_google() 
     
     if documento:
         try:
-            # Intentamos obtener la pestaña "Historial"
             try:
                 pestana_historial = documento.spreadsheet.worksheet("Historial")
             except:
                 pestana_historial = documento.worksheet("Historial")
             
-            # --- VALIDACIÓN DE DUPLICADOS (NUEVO) ---
-            # 1. Obtenemos todos los registros para comparar
             registros_actuales = pestana_historial.get_all_values()
             
-            # 2. Datos de la tarea que intentamos subir
-            t_nuevo = str(fila_datos[0]) # Token
-            f_nueva = str(fila_datos[1]) # Fecha
-            a_nueva = str(fila_datos[3]) # Área
-            tr_nueva = str(fila_datos[4]) # Tarea
+            t_nuevo = str(fila_datos[0])
+            f_nueva = str(fila_datos[1])
+            a_nueva = str(fila_datos[3])
+            tr_nueva = str(fila_datos[4])
 
-            # 3. Revisamos fila por fila en el Excel
             for fila in registros_actuales:
                 if (len(fila) >= 5 and 
                     str(fila[0]) == t_nuevo and 
@@ -377,11 +368,9 @@ def guardar_en_historial_nube(fila_datos):
                     str(fila[3]) == a_nueva and 
                     str(fila[4]) == tr_nueva):
                     
-                    # Si coincide todo, avisamos y salimos sin guardar
-                    st.warning(f"La tarea '{tr_nueva}' ya está registrada para hoy.")
+                    # QUITAR ESTA LÍNEA: st.warning(...)
                     return False 
 
-            # --- SI NO ES DUPLICADO, GUARDAMOS ---
             pestana_historial.append_row(fila_datos)
             return True
 
@@ -784,16 +773,20 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- BLOQUE 3: ELIMINAR ELEMENTOS ---
-    # --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ---
-    RED_ALERT = "#FF4B4B" # El rojo estándar de Streamlit
+# --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ---
+    RED_ALERT = "#FF4B4B" 
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {RED_ALERT}; border-bottom: none;">
-            <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Eliminar Elementos</span>
+            <span style="color: {RED_ALERT}; font-weight: 800; font-style: italic; text-transform: uppercase;">Eliminar Elementos</span>
         </div>
     """, unsafe_allow_html=True)
+
     with st.container():
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {RED_ALERT}; border-radius: 0 0 10px 10px;">', unsafe_allow_html=True)
-        opcion_del = st.radio("¿Qué deseas eliminar?", ["Una Tarea", "Un Área completa"], horizontal=True)
+        
+        # --- PREGUNTA 1 EN ROJO ---
+        st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px;">¿Qué deseas eliminar?</p>', unsafe_allow_html=True)
+        opcion_del = st.radio("", ["Una Tarea", "Un Área completa"], horizontal=True, label_visibility="collapsed")
         
         hoja_c = conectar_google()
         try:
@@ -802,37 +795,44 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
             p_conf = hoja_c.worksheet("Configuracion")
 
         if opcion_del == "Una Tarea":
-            ae = st.selectbox("Área de la tarea:", list(st.session_state.areas.keys()), key="ae_selector")
-            tareas_disp = [t["nombre"] for t in st.session_state.areas[ae][0]]
-            te = st.selectbox("Selecciona la tarea a eliminar:", tareas_disp, key="te_selector")
+            # --- PREGUNTA 2 EN ROJO ---
+            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px; margin-top: 15px;">Área de la tarea:</p>', unsafe_allow_html=True)
+            ae = st.selectbox("", list(st.session_state.areas.keys()), key="ae_selector", label_visibility="collapsed")
             
+            tareas_disp = [t["nombre"] for t in st.session_state.areas[ae][0]]
+            
+            # --- PREGUNTA 3 EN ROJO ---
+            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px; margin-top: 15px;">Selecciona la tarea a eliminar:</p>', unsafe_allow_html=True)
+            te = st.selectbox("", tareas_disp, key="te_selector", label_visibility="collapsed")
+            
+            st.write(" ") # Espacio antes del botón
             if st.button("ELIMINAR TAREA", width="stretch"):
-                # 1. Borrar en Excel
-                celda = p_conf.find(te) # Busca el nombre de la tarea
+                # ... (resto de tu lógica de borrado de tarea) ...
+                celda = p_conf.find(te)
                 if celda:
                     p_conf.delete_rows(celda.row)
-                
-                # 2. Borrar en memoria local
                 st.session_state.areas[ae][0] = [t for t in st.session_state.areas[ae][0] if t["nombre"] != te]
                 st.error(f"Tarea '{te}' eliminada.")
                 time.sleep(1)
                 st.rerun()
 
         else:
-            area_e = st.selectbox("Área a eliminar:", list(st.session_state.areas.keys()), key="area_e_selector")
+            # --- PREGUNTA ÁREA EN ROJO ---
+            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: -10px; margin-top: 15px;">Área a eliminar:</p>', unsafe_allow_html=True)
+            area_e = st.selectbox("", list(st.session_state.areas.keys()), key="area_e_selector", label_visibility="collapsed")
+            
+            st.write(" ")
             if st.button("ELIMINAR ÁREA", width="stretch"):
-                # 1. Borrar todas las filas de esa área en Excel
+                # ... (resto de tu lógica de borrado de área) ...
                 filas = p_conf.get_all_values()
                 for i, fila in enumerate(reversed(filas), 1):
-                    # Si el Token coincide y el Area coincide
                     if fila[0] == st.session_state.user_key and fila[1] == area_e:
                         p_conf.delete_rows(len(filas) - i + 1)
-                
-                # 2. Borrar en memoria local
                 del st.session_state.areas[area_e]
                 st.error(f"Área '{area_e}' y sus tareas eliminadas.")
                 time.sleep(1)
                 st.rerun()
+                
         st.markdown('</div>', unsafe_allow_html=True)
             
 # --- VISTA SEMANAL CON DESPLEGABLES Y METAS EN ROJO ---
@@ -1019,7 +1019,10 @@ with c_cob:
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.info("No hay tareas nuevas para sumar. Todas ya estaban en el historial.")
+                    # ESTA ES LA PARTE QUE MODIFICAMOS:
+                    aviso = st.info("Bitácora actualizada: las tareas nuevas se han unido a tus registros previos.")
+                    time.sleep(2) # Espera 2 segundos para que el usuario lo lea
+                    aviso.empty() # Borra el cuadro azul de la pantalla
                 
             except Exception as e:
                 st.error(f"Error al sincronizar: {e}")
