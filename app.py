@@ -452,10 +452,13 @@ if 'areas' not in st.session_state:
                     tarea = fila.get('Tarea', '')
                     # Si no hay días, ponemos todos por defecto
                     dias_val = fila.get('Dias', "")
-                    dias = str(dias_val).split(",") if dias_val else dias_semana
+                    if dias_val:
+                        dias = [d.strip() for d in str(dias_val).split(",")]
+                    else:
+                        dias = []
                     
                     if area not in config_cargada:
-                        config_cargada[area] = [[], objetivo]
+                       config_cargada[area] = [[], objetivo]
                     
                     if tarea:
                         config_cargada[area][0].append({"nombre": tarea, "dias": dias})
@@ -743,7 +746,11 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         dias_tarea = st.multiselect("Selecciona los días:", dias_semana, default=dias_semana, key="dias_multi")
         
         if st.button("GUARDAR TAREA", width="stretch"):
-            if nt and dias_tarea:
+            if not nt:
+             st.warning("Escribe el nombre de la tarea.")
+            elif not dias_tarea:
+             st.warning("Selecciona al menos un día.")
+            else:
                 # 1. Guardar en la nube (Excel)
                 hoja_c = conectar_google()
                 if hoja_c:
