@@ -773,17 +773,25 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- BLOQUE 3: ELIMINAR ELEMENTOS ---
-# --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ACTUALIZADO ---
-    RED_ALERT = "#FF4B4B" # El rojo estándar de Streamlit
+# --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ---
+    RED_ALERT = "#FF4B4B" 
 
-    # Inyectamos CSS global para cambiar específicamente el color del texto de los Radio Buttons
-    # Este estilo aplica a todas las opciones de st.radio de la página.
+    # INYECCIÓN DE CSS PARA FORZAR EL ROJO EN RADIO Y SELECTBOX
     st.markdown(f"""
         <style>
-        /* Selecciona el texto de las etiquetas de las opciones de st.radio */
-        .st-d0 .stMarkdown p {{
+        /* Color de las opciones del Radio Button */
+        div[data-testid="stWidgetLabel"] p {{ color: {RED_ALERT} !important; }}
+        label[data-testid="stWidgetLabel"] p {{ color: {RED_ALERT} !important; }}
+        
+        /* Color de los textos de las opciones (Una Tarea, etc) */
+        div[data-testid="stRadio"] label p {{
             color: {RED_ALERT} !important;
-            font-weight: 500; /* Un poco más de peso para que resalte */
+            font-weight: bold !important;
+        }}
+
+        /* Color del texto dentro de los Selectbox (Ejercicio Diario, etc) */
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] div {{
+            color: {RED_ALERT} !important;
         }}
         </style>
     """, unsafe_allow_html=True)
@@ -797,15 +805,10 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
     with st.container():
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {RED_ALERT}; border-radius: 0 0 10px 10px;">', unsafe_allow_html=True)
         
-        # --- TÍTULO DE LA PREGUNTA ---
-        st.markdown(f'<div style="margin-top: 10px; margin-bottom: 10px;"><p style="color: {RED_ALERT}; font-weight: bold;">¿Qué deseas eliminar?</p></div>', unsafe_allow_html=True)
-        
-        # --- RADIO BUTTONS CON TEXTO EN ROJO (gracias al CSS global) ---
-        # Mantenemos 'label_visibility="collapsed"' para ocultar el label original gris,
-        # pero el CSS global ahora colorea las opciones.
+        # --- PREGUNTA 1 ---
+        st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px;">¿Qué deseas eliminar?</p>', unsafe_allow_html=True)
         opcion_del = st.radio("", ["Una Tarea", "Un Área completa"], horizontal=True, label_visibility="collapsed", key="del_radio_final")
         
-        # ... (Toda la lógica de Google Sheets y selectores se mantiene exactamente igual) ...
         hoja_c = conectar_google()
         try:
             p_conf = hoja_c.spreadsheet.worksheet("Configuracion")
@@ -813,42 +816,42 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
             p_conf = hoja_c.worksheet("Configuracion")
 
         if opcion_del == "Una Tarea":
-            # --- TÍTULO ÁREA ---
-            st.markdown(f'<div style="margin-top: 25px; margin-bottom: 5px;"><p style="color: {RED_ALERT}; font-weight: bold;">Área de la tarea:</p></div>', unsafe_allow_html=True)
+            # --- PREGUNTA 2 ---
+            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px; margin-top: 15px;">Área de la tarea:</p>', unsafe_allow_html=True)
             ae = st.selectbox("", list(st.session_state.areas.keys()), key="ae_selector", label_visibility="collapsed")
             
             tareas_disp = [t["nombre"] for t in st.session_state.areas[ae][0]]
             
-            # --- TÍTULO TAREA ---
-            st.markdown(f'<div style="margin-top: 25px; margin-bottom: 5px;"><p style="color: {RED_ALERT}; font-weight: bold;">Selecciona la tarea a eliminar:</p></div>', unsafe_allow_html=True)
+            # --- PREGUNTA 3 ---
+            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px; margin-top: 15px;">Selecciona la tarea a eliminar:</p>', unsafe_allow_html=True)
             te = st.selectbox("", tareas_disp, key="te_selector", label_visibility="collapsed")
             
-            st.markdown('<div style="margin-top: 25px;"></div>', unsafe_allow_html=True)
-            if st.button("ELIMINAR TAREA", width="stretch", type="primary"): # type="primary" para botón rojo
+            st.write(" ")
+            if st.button("ELIMINAR TAREA", width="stretch", type="primary"):
                 celda = p_conf.find(te)
                 if celda:
                     p_conf.delete_rows(celda.row)
                 st.session_state.areas[ae][0] = [t for t in st.session_state.areas[ae][0] if t["nombre"] != te]
-                st.error(f"✅ Tarea '{te}' eliminada.")
+                st.error(f"Tarea '{te}' eliminada.")
                 time.sleep(1)
                 st.rerun()
 
         else:
-            # --- TÍTULO ÁREA A ELIMINAR ---
-            st.markdown(f'<div style="margin-top: 25px; margin-bottom: 5px;"><p style="color: {RED_ALERT}; font-weight: bold;">Área a eliminar:</p></div>', unsafe_allow_html=True)
+            # --- PREGUNTA ÁREA ---
+            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px; margin-top: 15px;">Área a eliminar:</p>', unsafe_allow_html=True)
             area_e = st.selectbox("", list(st.session_state.areas.keys()), key="area_e_selector", label_visibility="collapsed")
             
-            st.markdown('<div style="margin-top: 25px;"></div>', unsafe_allow_html=True)
+            st.write(" ")
             if st.button("ELIMINAR ÁREA", width="stretch", type="primary"):
                 filas = p_conf.get_all_values()
                 for i, fila in enumerate(reversed(filas), 1):
                     if fila[0] == st.session_state.user_key and fila[1] == area_e:
                         p_conf.delete_rows(len(filas) - i + 1)
                 del st.session_state.areas[area_e]
-                st.error(f"✅ Área '{area_e}' y sus tareas eliminadas.")
+                st.error(f"Área '{area_e}' y sus tareas eliminadas.")
                 time.sleep(1)
                 st.rerun()
-        
+                
         st.markdown('</div>', unsafe_allow_html=True)
             
 # --- VISTA SEMANAL CON DESPLEGABLES Y METAS EN ROJO ---
