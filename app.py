@@ -495,9 +495,8 @@ with st.sidebar:
     st.divider()
     
     if st.button("Cerrar Sesión"):
-         for key in list(st.session_state.keys()):
-           del st.session_state[key]
-    st.rerun()
+        st.session_state.autenticado = False
+        st.rerun()
     
     with st.expander("Seguridad: Cambiar mi PIN"):
         st.markdown('<span class="area-goal">PIN Nuevo (4 dígitos)</span>', unsafe_allow_html=True)
