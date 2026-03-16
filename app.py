@@ -773,40 +773,15 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         st.markdown('</div>', unsafe_allow_html=True)
 
 # --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ---
-    RED_ALERT = "#FF4B4B" 
-
-    # INYECCIÓN DE CSS PARA FORZAR EL ROJO EN RADIO Y SELECTBOX
-    st.markdown(f"""
-        <style>
-        /* Color de las opciones del Radio Button */
-        div[data-testid="stWidgetLabel"] p {{ color: {RED_ALERT} !important; }}
-        label[data-testid="stWidgetLabel"] p {{ color: {RED_ALERT} !important; }}
-        
-        /* Color de los textos de las opciones (Una Tarea, etc) */
-        div[data-testid="stRadio"] label p {{
-            color: {RED_ALERT} !important;
-            font-weight: bold !important;
-        }}
-
-        /* Color del texto dentro de los Selectbox (Ejercicio Diario, etc) */
-        div[data-testid="stSelectbox"] div[data-baseweb="select"] div {{
-            color: {RED_ALERT} !important;
-        }}
-        </style>
-    """, unsafe_allow_html=True)
-
+    RED_ALERT = "#FF4B4B" # El rojo estándar de Streamlit
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {RED_ALERT}; border-bottom: none;">
-            <span style="color: {RED_ALERT}; font-weight: 800; font-style: italic; text-transform: uppercase;">Eliminar Elementos</span>
+            <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Eliminar Elementos</span>
         </div>
     """, unsafe_allow_html=True)
-
     with st.container():
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {RED_ALERT}; border-radius: 0 0 10px 10px;">', unsafe_allow_html=True)
-        
-        # --- PREGUNTA 1 ---
-        st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px;">¿Qué deseas eliminar?</p>', unsafe_allow_html=True)
-        opcion_del = st.radio("", ["Una Tarea", "Un Área completa"], horizontal=True, label_visibility="collapsed", key="del_radio_final")
+        opcion_del = st.radio("¿Qué deseas eliminar?", ["Una Tarea", "Un Área completa"], horizontal=True)
         
         hoja_c = conectar_google()
         try:
@@ -815,42 +790,37 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
             p_conf = hoja_c.worksheet("Configuracion")
 
         if opcion_del == "Una Tarea":
-            # --- PREGUNTA 2 ---
-            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px; margin-top: 15px;">Área de la tarea:</p>', unsafe_allow_html=True)
-            ae = st.selectbox("", list(st.session_state.areas.keys()), key="ae_selector", label_visibility="collapsed")
-            
+            ae = st.selectbox("Área de la tarea:", list(st.session_state.areas.keys()), key="ae_selector")
             tareas_disp = [t["nombre"] for t in st.session_state.areas[ae][0]]
+            te = st.selectbox("Selecciona la tarea a eliminar:", tareas_disp, key="te_selector")
             
-            # --- PREGUNTA 3 ---
-            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px; margin-top: 15px;">Selecciona la tarea a eliminar:</p>', unsafe_allow_html=True)
-            te = st.selectbox("", tareas_disp, key="te_selector", label_visibility="collapsed")
-            
-            st.write(" ")
-            if st.button("ELIMINAR TAREA", width="stretch", type="primary"):
-                celda = p_conf.find(te)
+            if st.button("ELIMINAR TAREA", width="stretch"):
+                # 1. Borrar en Excel
+                celda = p_conf.find(te) # Busca el nombre de la tarea
                 if celda:
                     p_conf.delete_rows(celda.row)
+                
+                # 2. Borrar en memoria local
                 st.session_state.areas[ae][0] = [t for t in st.session_state.areas[ae][0] if t["nombre"] != te]
                 st.error(f"Tarea '{te}' eliminada.")
                 time.sleep(1)
                 st.rerun()
 
         else:
-            # --- PREGUNTA ÁREA ---
-            st.markdown(f'<p style="color: {RED_ALERT}; font-weight: bold; margin-bottom: 5px; margin-top: 15px;">Área a eliminar:</p>', unsafe_allow_html=True)
-            area_e = st.selectbox("", list(st.session_state.areas.keys()), key="area_e_selector", label_visibility="collapsed")
-            
-            st.write(" ")
-            if st.button("ELIMINAR ÁREA", width="stretch", type="primary"):
+            area_e = st.selectbox("Área a eliminar:", list(st.session_state.areas.keys()), key="area_e_selector")
+            if st.button("ELIMINAR ÁREA", width="stretch"):
+                # 1. Borrar todas las filas de esa área en Excel
                 filas = p_conf.get_all_values()
                 for i, fila in enumerate(reversed(filas), 1):
+                    # Si el Token coincide y el Area coincide
                     if fila[0] == st.session_state.user_key and fila[1] == area_e:
                         p_conf.delete_rows(len(filas) - i + 1)
+                
+                # 2. Borrar en memoria local
                 del st.session_state.areas[area_e]
                 st.error(f"Área '{area_e}' y sus tareas eliminadas.")
                 time.sleep(1)
                 st.rerun()
-                
         st.markdown('</div>', unsafe_allow_html=True)
             
 # --- VISTA SEMANAL CON DESPLEGABLES Y METAS EN ROJO ---
