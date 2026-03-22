@@ -379,8 +379,8 @@ def guardar_en_historial_nube(fila_datos):
             
     return False
 
-# --- INICIALIZACION DE DATOS ---
-dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+# --- INICIALIZACION DE DATOS (Sincronizado con la interfaz) ---
+dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
 
 if 'puntos' not in st.session_state:
     st.session_state.puntos = 0  # Valor por defecto inicial
@@ -428,15 +428,16 @@ if 'historial' not in st.session_state or st.session_state.get('actualizar_histo
             st.error(f"Error al cargar bitácora: {e}")
             st.session_state.historial = pd.DataFrame(columns=["Token", "Fecha", "Día", "Área", "Tarea", "Logro"])
 if 'tienda' not in st.session_state: st.session_state.tienda = {"Café Especial": 200, "SkinCare Nuevo": 500}
-# --- INICIALIZACIÓN DE ÁREAS (CÓDIGO FINAL SIN AVISOS) ---
+
+
 # --- INICIALIZACIÓN DE ÁREAS (SINCRONIZACIÓN TOTAL) ---
-# Forzamos la carga desde la nube si la sesión es nueva
 if 'areas' not in st.session_state:
     hoja_conf = conectar_google()
     config_cargada = {}
-    
+
     if hoja_conf:
         try:
+            # Intentar acceder a la pestaña "Configuracion"
             try:
                 libro = hoja_conf.spreadsheet
                 pestana = libro.worksheet("Configuracion")
@@ -445,34 +446,32 @@ if 'areas' not in st.session_state:
             
             datos = pestana.get_all_records()
             
-            # Recorremos todas las filas del Excel
             for fila in datos:
-                # Solo cargamos lo que pertenece al usuario actual
+                # FILTRO POR USUARIO: Solo cargamos lo que le pertenece
                 if str(fila.get('Token')) == st.session_state.user_key:
-                    area = fila.get('Area', 'General')
-                    objetivo = fila.get('Objetivo', '')
-                    tarea = fila.get('Tarea', '')
-                    dias_val = fila.get('Dias', "")
+                    area = str(fila.get('Area', 'General'))
+                    objetivo = str(fila.get('Objetivo', ''))
+                    tarea = str(fila.get('Tarea', ''))
+                    dias_val = str(fila.get('Dias', ""))
                     
-                    # Lógica de días (la que corregimos antes)
-                    if dias_val:
-                        dias = [d.strip() for d in str(dias_val).split(",")]
-                    else:
-                        dias = []
+                    # Procesar los días
+                    dias = [d.strip() for d in dias_val.split(",")] if dias_val else []
                     
                     if area not in config_cargada:
                         config_cargada[area] = [[], objetivo]
                     
                     if tarea:
                         config_cargada[area][0].append({"nombre": tarea, "dias": dias})
+            
+            # Si el Excel tenía datos del usuario, los asignamos
+            if config_cargada:
+                st.session_state.areas = config_cargada
+                
         except Exception as e:
-            pass
+            st.error(f"Error al conectar con la configuración: {e}")
 
-    # Si la nube tiene datos, los usamos. Si no, usamos los de fábrica.
-    if config_cargada:
-        st.session_state.areas = config_cargada
-    else:
-        # Solo si el usuario es totalmente nuevo y no tiene nada en el Excel
+    # Si después de intentar cargar no hay nada (Usuario nuevo), cargar valores de fábrica
+    if 'areas' not in st.session_state:
         st.session_state.areas = {
             "Espiritu": [[{"nombre": "Lectura Biblia", "dias": dias_semana}], "Crecer en fe"],
             "Mente": [[{"nombre": "Inglés", "dias": dias_semana}], "Fluidez 2026"],
@@ -692,46 +691,69 @@ if st.session_state.mostrar_wrapped:
         st.session_state.mostrar_wrapped = False
         st.rerun()
 
-# --- SECCIÓN DE GESTIÓN (CARPETA CON ESTILO TARJETA) ---
+# --- 1. DEFINE LA FUNCIÓN SIEMPRE AFUERA (AL INICIO DEL SCRIPT) ---
+def guardar_configuracion_nube(area_nombre, objetivo, tarea_nombre="", dias_seleccionados=[]):
+    """Guarda una nueva entrada en la hoja de Configuración de Google Sheets"""
+    hoja_c = conectar_google()
+    if hoja_c:
+        try:
+            try:
+                p_conf = hoja_c.spreadsheet.worksheet("Configuracion")
+            except:
+                p_conf = hoja_c.worksheet("Configuracion")
+            
+            dias_texto = ",".join(dias_seleccionados) if dias_seleccionados else ""
+            
+            p_conf.append_row([
+                st.session_state.user_key, 
+                area_nombre, 
+                objetivo, 
+                tarea_nombre, 
+                dias_texto
+            ])
+            return True
+        except Exception as e:
+            st.error(f"Error de sincronización: {e}")
+    return False
+
+# --- 2. SECCIÓN DE GESTIÓN (DENTRO DEL EXPANDER) ---
 with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
-    
-   # --- BLOQUE 1: NUEVA ÁREA (ACTUALIZADO PARA GUARDAR EN NUBE) ---
+
+    # --- BLOQUE 1: NUEVA ÁREA (TODO ESTO DEBE ESTAR INDENTADO) ---
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {ORANGE}; border-bottom: none;">
             <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Nueva Área</span>
         </div>
     """, unsafe_allow_html=True)
+
+    # El contenedor y todo lo de adentro deben tener los 4 espacios de margen del expander
     with st.container():
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {ORANGE}; border-radius: 0 0 10px 10px; margin-bottom: 20px;">', unsafe_allow_html=True)
+        
         na = st.text_input("Nombre de la nueva área:", placeholder="Ej: Salud, Finanzas...", key="na_input")
         st.markdown(f'<span class="area-goal">Objetivo / Meta</span>', unsafe_allow_html=True)
         ng = st.text_input("Define el objetivo:", placeholder="Ej: Estar en forma...", key="ng_input", label_visibility="collapsed")
         
         if st.button("AÑADIR ÁREA", width="stretch"):
-            if na and na not in st.session_state.areas:
-                # 1. Guardar en la nube (Excel)
-                hoja_c = conectar_google()
-                if hoja_c:
-                    try:
-                        # Buscamos la pestaña Configuracion
-                        try:
-                            p_conf = hoja_c.spreadsheet.worksheet("Configuracion")
-                        except:
-                            p_conf = hoja_c.worksheet("Configuracion")
-                        
-                        # Añadimos la fila: Token, Area, Objetivo, Tarea(vacia), Dias(vacia)
-                        p_conf.append_row([st.session_state.user_key, na, ng, "", ""])
-                        
-                        # 2. Actualizar memoria local para que se vea el cambio
-                        st.session_state.areas[na] = [[], ng]
-                        st.success(f"Área '{na}' guardada permanentemente.")
+            if na and ng:
+                if na not in st.session_state.areas:
+                    # 1. ACTUALIZAR MEMORIA LOCAL
+                    st.session_state.areas[na] = [[], ng]
+                    
+                    # 2. GUARDAR EN LA NUBE
+                    exito = guardar_configuracion_nube(na, ng)
+                    
+                    if exito:
+                        st.success(f"¡Área '{na}' guardada con éxito!")
                         time.sleep(1)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al guardar en la nube: {e}")
                 else:
-                    st.error("No hay conexión con el Excel.")
+                    st.warning("Esta área ya existe.")
+            else:
+                st.error("Por favor rellena ambos campos.")
+        
         st.markdown('</div>', unsafe_allow_html=True)
+
     # --- BLOQUE 2: NUEVA TAREA ---
     # --- BLOQUE 2: NUEVA TAREA (CONEXIÓN A NUBE) ---
     st.markdown(f"""
@@ -1086,3 +1108,5 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
+
+
