@@ -90,52 +90,63 @@ st.set_page_config(page_title="Plan Semanal", layout="wide")
 
 # --- INICIALIZACIÓN DE ÁREAS (SINCRONIZACIÓN TOTAL) ---
 def cargar_areas_desde_nube():
-    hoja_conf = conectar_google()
     config_cargada = {}
+    
+    try:
+        hoja_conf = conectar_google()
+        if hoja_conf is None:
+            return False
+        
+        pestana = hoja_conf.spreadsheet.worksheet("Configuracion")
+        datos = pestana.get_all_records()
+        
+        for fila in datos:
+            token_fila = str(fila.get('Token', '')).strip()
+            token_user = str(st.session_state.user_key).strip()
+            
+            if token_fila != token_user:
+                continue
+                
+            area     = str(fila.get('Area', 'General')).strip()
+            objetivo = str(fila.get('Objetivo', '')).strip()
+            tarea    = str(fila.get('Tarea', '')).strip()
 
-    if hoja_conf:
-        try:
-            try:
-                pestana = hoja_conf.spreadsheet.worksheet("Configuracion")
-            except:
-                pestana = hoja_conf
+            if area not in config_cargada:
+                config_cargada[area] = [[], objetivo]
 
-            datos = pestana.get_all_records()
+            if tarea:
+                # Busca columna Dias aunque tenga espacios en el encabezado
+                dias_val = ''
+                for key in fila.keys():
+                    if key.strip() == 'Dias':
+                        dias_val = str(fila[key]).strip()
+                        break
+                
+                # Convierte "MARTES,VIERNES" en ["MARTES", "VIERNES"]
+                dias = [d.strip() for d in dias_val.split(",")] if dias_val else []
+                
+                nombres_actuales = [t['nombre'] for t in config_cargada[area][0]]
+                
+                if tarea not in nombres_actuales:
+                    # Tarea nueva
+                    config_cargada[area][0].append({"nombre": tarea, "dias": dias})
+                else:
+                    # Tarea existente, acumula días nuevos
+                    for t in config_cargada[area][0]:
+                        if t['nombre'] == tarea:
+                            for dia in dias:
+                                if dia not in t['dias']:
+                                    t['dias'].append(dia)
+                            break
 
-            for fila in datos:
-                if str(fila.get('Token', '')).strip() != str(st.session_state.user_key).strip():
-                    continue  # saltar filas de otros usuarios
-
-                area     = str(fila.get('Area', 'General')).strip()
-                objetivo = str(fila.get('Objetivo', '')).strip()
-                tarea    = str(fila.get('Tarea', '')).strip()
-                dias_val = str(fila.get('Dias', '')).strip()
-
-                # ← SIEMPRE creamos el área aunque no tenga tarea
-                if area not in config_cargada:
-                    config_cargada[area] = [[], objetivo]
-
-                if tarea:  # solo agregamos tarea si existe
-                    dias = [d.strip() for d in dias_val.split(",")] if dias_val else []
-                    nombres_actuales = [t['nombre'] for t in config_cargada[area][0]]
-                    if tarea not in nombres_actuales:
-                        config_cargada[area][0].append({"nombre": tarea, "dias": dias})
-
-            if config_cargada:
-                st.session_state.areas = config_cargada
-                return True
-
-        except Exception as e:
-            st.error(f"Error al sincronizar datos: {e}")
-
-    if 'areas' not in st.session_state or not st.session_state.areas:
-        st.session_state.areas = {
-            "Espiritu": [[{"nombre": "Lectura Biblia", "dias": ["Lunes"]}], "Crecer en fe"],
-            "Mente":    [[{"nombre": "Inglés", "dias": ["Lunes"]}], "Fluidez 2026"],
-            "Cuerpo":   [[{"nombre": "Ejercicio", "dias": ["Lunes"]}], "Salud óptima"]
-        }
+        if config_cargada:
+            st.session_state.areas = config_cargada
+            return True
+            
+    except Exception as e:
+        st.error(f"Error: {e}")
+        
     return False
-
 
 # --- PALETA DE COLORES PERSONALIZADA ---
 SKY_BLUE = "#8ecae6"
@@ -338,15 +349,24 @@ if not st.session_state.autenticado:
                     st.session_state.user_key = token
                     st.session_state.nombre_usuario = datos[0]
                     
-                    # Limpiamos áreas viejas para forzar la carga de las nuevas desde el Excel
+                    # Limpiamos áreas viejas y forzamos inicialización
                     if 'areas' in st.session_state:
                         del st.session_state.areas
+                    st.session_state.areas = {}
                     
-                    # Llamamos a la función de sincronización
-                    cargar_areas_desde_nube() 
+                    # Cargamos desde el Excel
+                    cargar_areas_desde_nube()
+                    
+                    # Si quedó vacío, ponemos las de fábrica
+                    if not st.session_state.areas:
+                        st.session_state.areas = {
+                            "Espiritu": [[{"nombre": "Lectura Biblia", "dias": ["Lunes"]}], "Crecer en fe"],
+                            "Mente":    [[{"nombre": "Inglés", "dias": ["Lunes"]}], "Fluidez 2026"],
+                            "Cuerpo":   [[{"nombre": "Ejercicio", "dias": ["Lunes"]}], "Salud óptima"]
+                        }
                     
                     acceso_concedido = True
-                    st.rerun() # Reinicia la app ya con los datos cargados
+                    st.rerun()
             
             if not acceso_concedido:
                 st.error("Llave incorrecta")
@@ -936,35 +956,19 @@ for i, nombre_dia in enumerate(dias_semana):
 
         # --- BOTÓN DE GUARDAR ---
         st.markdown('<div style="margin-top:20px;">', unsafe_allow_html=True)
-if st.button(f"FINALIZAR {nombre_dia.upper()}", key=f"btn_save_{nombre_dia}_{v}", use_container_width=True):
-    if tareas_dia_recolectadas:                                    # ← nivel 2
-        df_hoy = pd.DataFrame(tareas_dia_recolectadas)            # ← nivel 3
-        fecha_hoy = ahora_mx.strftime("%Y-%m-%d")
-        df_hoy["Fecha"] = fecha_hoy
-        df_hoy["Día"] = nombre_dia
-        
-        guardadas = 0
-        for _, fila in df_hoy.iterrows():                         # ← nivel 3 (AQUÍ el error)
-            datos_excel = [
-                st.session_state.user_key,
-                fila["Fecha"],
-                fila["Día"],
-                fila["Área"],
-                fila["Tarea"],
-                fila.get("Logro", "Tarea completada")
-            ]
-            if guardar_en_historial_nube(datos_excel):
-                guardadas += 1
-        
-        st.session_state.historial = pd.concat(
-            [st.session_state.historial, df_hoy], ignore_index=True
-        )
-        
-        st.success(f"¡{nombre_dia} guardado! ({guardadas} tareas subidas a la nube)")
-        time.sleep(1)
-        st.rerun()
-    else:
-        st.warning("No hay tareas seleccionadas.")
+        if st.button(f"FINALIZAR {nombre_dia.upper()}", key=f"btn_save_{nombre_dia}_{v}", use_container_width=True):
+            if tareas_dia_recolectadas:
+                df_hoy = pd.DataFrame(tareas_dia_recolectadas)
+                df_hoy["Fecha"] = datetime.now().strftime("%d/%m/%Y")
+                df_hoy["Día"] = nombre_dia
+                
+                st.session_state.historial = pd.concat([st.session_state.historial, df_hoy], ignore_index=True)
+                
+                st.success(f"¡{nombre_dia} guardado en la Bitácora!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.warning("No hay tareas seleccionadas.")
         st.markdown('</div>', unsafe_allow_html=True)
 # --- ANALÍTICA ---
 st.write("---")
@@ -1147,7 +1151,6 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
-
 
 
 
