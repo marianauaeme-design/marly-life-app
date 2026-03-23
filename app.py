@@ -512,7 +512,22 @@ if 'historial' not in st.session_state or st.session_state.get('actualizar_histo
         except Exception as e:
             st.error(f"Error al cargar bitácora: {e}")
             st.session_state.historial = pd.DataFrame(columns=["Token", "Fecha", "Día", "Área", "Tarea", "Logro"])
-if 'tienda' not in st.session_state: st.session_state.tienda = {"Café Especial": 200, "SkinCare Nuevo": 500}
+if 'tienda' not in st.session_state:
+    st.session_state.tienda = {}
+    hoja_t = conectar_google()
+    if hoja_t:
+        try:
+            try:
+                pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
+            except:
+                pestana_t = hoja_t.worksheet("Tienda")
+            
+            filas_tienda = pestana_t.get_all_records()
+            for fila in filas_tienda:
+                if str(fila.get('Token', '')).strip() == str(st.session_state.user_key).strip():
+                    st.session_state.tienda[str(fila.get('Item', ''))] = int(fila.get('Costo', 0))
+        except:
+            st.session_state.tienda = {}
 
 
 
@@ -532,25 +547,20 @@ with st.sidebar:
     st.divider()
     
     if st.button("Cerrar Sesión"):
-        # Limpiamos todo para que al volver a entrar obligue a recargar del Excel
-        st.session_state.autenticado = False
-        if 'areas' in st.session_state:
-            del st.session_state.areas
-        if 'user_key' in st.session_state:
-            st.session_state.user_key = None
-        st.rerun()
-    
-    with st.expander("Seguridad: Cambiar mi PIN"):
-        st.markdown('<span class="area-goal">PIN Nuevo (4 dígitos)</span>', unsafe_allow_html=True)
-        pin_upd = st.text_input("PIN Nuevo (4 dígitos)", max_chars=4, type="password", key="ch_pin", label_visibility="collapsed")
-        if st.button("Actualizar PIN"):
-            if len(pin_upd) == 4 and pin_upd.isdigit():
-                st.session_state.db_usuarios[st.session_state.user_key][1] = pin_upd
-                st.success("PIN actualizado")
-                time.sleep(1); st.rerun()
-            else: st.error("Usa 4 números.")
+        keys_to_delete = ['autenticado', 'user_key', 'nombre_usuario', 'areas', 
+                          'historial', 'puntos', 'tienda', 'version_tablero',
+                          'mostrar_wrapped', 'frase_del_dia', 'tareas_con_puntos',
+                          'db_usuarios']
+        for key in keys_to_delete:
+            if key in st.session_state:
+                del st.session_state[key]
         
-    st.divider()
+        # Limpiamos borradores en sesión
+        keys_borradores = [k for k in st.session_state.keys() if k.startswith('borradores_') or k.startswith('borrador_row_')]
+        for key in keys_borradores:
+            del st.session_state[key]
+        
+        st.rerun()
 
    # --- PANEL DE ADMINISTRACIÓN (DENTRO DEL SIDEBAR) ---
     if st.session_state.user_key == "ADMIN123":
