@@ -88,6 +88,57 @@ def conectar_google():
 # --- 0. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Plan Semanal", layout="wide")
 
+# --- INICIALIZACIÓN DE ÁREAS (SINCRONIZACIÓN TOTAL) ---
+def cargar_areas_desde_nube():
+    """Busca en el Excel las áreas del usuario y las guarda en la sesión"""
+    hoja_conf = conectar_google()
+    config_cargada = {}
+
+    if hoja_conf:
+        try:
+            # Intentar entrar a la pestaña
+            try:
+                pestana = hoja_conf.spreadsheet.worksheet("Configuracion")
+            except:
+                pestana = hoja_conf 
+            
+            datos = pestana.get_all_records()
+            
+            for fila in datos:
+                # Filtro por el Token del usuario logueado
+                if str(fila.get('Token')).strip() == str(st.session_state.user_key).strip():
+                    area = str(fila.get('Area', 'General'))
+                    objetivo = str(fila.get('Objetivo', ''))
+                    tarea = str(fila.get('Tarea', ''))
+                    dias_val = str(fila.get('Dias', ""))
+                    
+                    dias = [d.strip() for d in dias_val.split(",")] if dias_val else []
+                    
+                    if area not in config_cargada:
+                        config_cargada[area] = [[], objetivo]
+                    
+                    if tarea:
+                        # Verificamos si la tarea ya existe para no duplicarla
+                        nombres_actuales = [t['nombre'] for t in config_cargada[area][0]]
+                        if tarea not in nombres_actuales:
+                            config_cargada[area][0].append({"nombre": tarea, "dias": dias})
+
+            if config_cargada:
+                st.session_state.areas = config_cargada
+                return True
+        except Exception as e:
+            st.error(f"Error al sincronizar datos: {e}")
+    
+    # Si no hay datos, ponemos los de fábrica
+    if 'areas' not in st.session_state or not st.session_state.areas:
+        st.session_state.areas = {
+            "Espiritu": [[{"nombre": "Lectura Biblia", "dias": ["Lunes"]}], "Crecer en fe"],
+            "Mente": [[{"nombre": "Inglés", "dias": ["Lunes"]}], "Fluidez 2026"],
+            "Cuerpo": [[{"nombre": "Ejercicio", "dias": ["Lunes"]}], "Salud óptima"]
+        }
+    return False
+
+
 # --- PALETA DE COLORES PERSONALIZADA ---
 SKY_BLUE = "#8ecae6"
 BLUE_GREEN = "#219ebc"
@@ -275,21 +326,37 @@ if not st.session_state.autenticado:
                 </p>
         """, unsafe_allow_html=True)
         
-      # El input y el botón
+# El input y el botón
         entrada = st.text_input("Acceso:", type="password", placeholder="Llave de acceso...", label_visibility="collapsed")
         
         st.markdown('<div style="margin-top: 15px;">', unsafe_allow_html=True)
+        
         if st.button("INGRESAR SISTEMA", width="stretch"):
+            acceso_concedido = False
             for token, datos in st.session_state.db_usuarios.items():
-                if entrada == token or (datos[1] and entrada == datos[1]):
+                # Verificamos si la entrada coincide con el Token o el PIN
+                if entrada == token or (len(datos) > 1 and datos[1] and entrada == str(datos[1])):
                     st.session_state.autenticado = True
                     st.session_state.user_key = token
                     st.session_state.nombre_usuario = datos[0]
-                    st.rerun()
-            st.error("Llave incorrecta")
+                    
+                    # Limpiamos áreas viejas para forzar la carga de las nuevas desde el Excel
+                    if 'areas' in st.session_state:
+                        del st.session_state.areas
+                    
+                    # Llamamos a la función de sincronización
+                    cargar_areas_desde_nube() 
+                    
+                    acceso_concedido = True
+                    st.rerun() # Reinicia la app ya con los datos cargados
+            
+            if not acceso_concedido:
+                st.error("Llave incorrecta")
+                
         st.markdown('</div></div>', unsafe_allow_html=True)
     st.stop()
 
+# Esto va fuera del bloque de login
 col_vacia, col_pin, col_vacia2 = st.columns([1, 2, 1])
 
 
@@ -430,53 +497,6 @@ if 'historial' not in st.session_state or st.session_state.get('actualizar_histo
 if 'tienda' not in st.session_state: st.session_state.tienda = {"Café Especial": 200, "SkinCare Nuevo": 500}
 
 
-# --- INICIALIZACIÓN DE ÁREAS (SINCRONIZACIÓN TOTAL) ---
-if 'areas' not in st.session_state:
-    hoja_conf = conectar_google()
-    config_cargada = {}
-
-    if hoja_conf:
-        try:
-            # Intentar acceder a la pestaña "Configuracion"
-            try:
-                libro = hoja_conf.spreadsheet
-                pestana = libro.worksheet("Configuracion")
-            except:
-                pestana = hoja_conf 
-            
-            datos = pestana.get_all_records()
-            
-            for fila in datos:
-                # FILTRO POR USUARIO: Solo cargamos lo que le pertenece
-                if str(fila.get('Token')) == st.session_state.user_key:
-                    area = str(fila.get('Area', 'General'))
-                    objetivo = str(fila.get('Objetivo', ''))
-                    tarea = str(fila.get('Tarea', ''))
-                    dias_val = str(fila.get('Dias', ""))
-                    
-                    # Procesar los días
-                    dias = [d.strip() for d in dias_val.split(",")] if dias_val else []
-                    
-                    if area not in config_cargada:
-                        config_cargada[area] = [[], objetivo]
-                    
-                    if tarea:
-                        config_cargada[area][0].append({"nombre": tarea, "dias": dias})
-            
-            # Si el Excel tenía datos del usuario, los asignamos
-            if config_cargada:
-                st.session_state.areas = config_cargada
-                
-        except Exception as e:
-            st.error(f"Error al conectar con la configuración: {e}")
-
-    # Si después de intentar cargar no hay nada (Usuario nuevo), cargar valores de fábrica
-    if 'areas' not in st.session_state:
-        st.session_state.areas = {
-            "Espiritu": [[{"nombre": "Lectura Biblia", "dias": dias_semana}], "Crecer en fe"],
-            "Mente": [[{"nombre": "Inglés", "dias": dias_semana}], "Fluidez 2026"],
-            "Cuerpo": [[{"nombre": "Ejercicio", "dias": ["Lunes", "Miércoles", "Viernes"]}], "Salud óptima"]
-        }
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -493,9 +513,20 @@ with st.sidebar:
     
     st.divider()
     
-    if st.button("Cerrar Sesión"):
-        st.session_state.autenticado = False
-        st.rerun()
+if st.button("Cerrar Sesión"):
+    # 1. Quitamos el acceso
+    st.session_state.autenticado = False
+    
+    # 2. BORRAMOS las áreas de la memoria (esto es lo más importante)
+    if 'areas' in st.session_state:
+        del st.session_state.areas
+        
+    # 3. Limpiamos el rastro del usuario
+    if 'user_key' in st.session_state:
+        st.session_state.user_key = None
+        
+    # 4. Reiniciamos la app para volver al login limpio
+    st.rerun()
     
     with st.expander("Seguridad: Cambiar mi PIN"):
         st.markdown('<span class="area-goal">PIN Nuevo (4 dígitos)</span>', unsafe_allow_html=True)
@@ -1108,5 +1139,7 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
+
+
 
 
