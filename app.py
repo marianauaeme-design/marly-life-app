@@ -513,7 +513,7 @@ with st.sidebar:
     
     st.divider()
     
-   if st.button("Cerrar Sesión"):
+    if st.button("Cerrar Sesión"):
         # Limpiamos todo para que al volver a entrar obligue a recargar del Excel
         st.session_state.autenticado = False
         if 'areas' in st.session_state:
@@ -1133,6 +1133,8 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
+
+
 
 
 
