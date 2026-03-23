@@ -513,20 +513,9 @@ with st.sidebar:
     
     st.divider()
     
-if st.button("Cerrar Sesión"):
-    # 1. Quitamos el acceso
-    st.session_state.autenticado = False
-    
-    # 2. BORRAMOS las áreas de la memoria (esto es lo más importante)
-    if 'areas' in st.session_state:
-        del st.session_state.areas
-        
-    # 3. Limpiamos el rastro del usuario
-    if 'user_key' in st.session_state:
-        st.session_state.user_key = None
-        
-    # 4. Reiniciamos la app para volver al login limpio
-    st.rerun()
+   if st.button("Cerrar Sesión"):
+        st.session_state.autenticado = False
+        st.rerun()
     
     with st.expander("Seguridad: Cambiar mi PIN"):
         st.markdown('<span class="area-goal">PIN Nuevo (4 dígitos)</span>', unsafe_allow_html=True)
