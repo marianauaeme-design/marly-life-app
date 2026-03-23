@@ -762,30 +762,26 @@ def guardar_configuracion_nube(area_nombre, objetivo, tarea_nombre="", dias_sele
 # --- 2. SECCIÓN DE GESTIÓN (DENTRO DEL EXPANDER) ---
 with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
 
-    # --- BLOQUE 1: NUEVA ÁREA (TODO ESTO DEBE ESTAR INDENTADO) ---
+    # --- BLOQUE 1: NUEVA ÁREA ---
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {ORANGE}; border-bottom: none;">
             <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Nueva Área</span>
         </div>
     """, unsafe_allow_html=True)
 
-    # El contenedor y todo lo de adentro deben tener los 4 espacios de margen del expander
     with st.container():
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {ORANGE}; border-radius: 0 0 10px 10px; margin-bottom: 20px;">', unsafe_allow_html=True)
         
-        na = st.text_input("Nombre de la nueva área:", placeholder="Ej: Salud, Finanzas...", key="na_input")
-        st.markdown(f'<span class="area-goal">Objetivo / Meta</span>', unsafe_allow_html=True)
+        st.markdown('<span class="area-goal">Nombre de la nueva área</span>', unsafe_allow_html=True)
+        na = st.text_input("Nombre de la nueva área:", placeholder="Ej: Salud, Finanzas...", key="na_input", label_visibility="collapsed")
+        st.markdown('<span class="area-goal">Objetivo / Meta</span>', unsafe_allow_html=True)
         ng = st.text_input("Define el objetivo:", placeholder="Ej: Estar en forma...", key="ng_input", label_visibility="collapsed")
         
         if st.button("AÑADIR ÁREA", width="stretch"):
             if na and ng:
                 if na not in st.session_state.areas:
-                    # 1. ACTUALIZAR MEMORIA LOCAL
                     st.session_state.areas[na] = [[], ng]
-                    
-                    # 2. GUARDAR EN LA NUBE
                     exito = guardar_configuracion_nube(na, ng)
-                    
                     if exito:
                         st.success(f"¡Área '{na}' guardada con éxito!")
                         time.sleep(1)
@@ -798,7 +794,6 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- BLOQUE 2: NUEVA TAREA ---
-    # --- BLOQUE 2: NUEVA TAREA (CONEXIÓN A NUBE) ---
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {ORANGE}; border-bottom: none;">
             <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Nueva Tarea</span>
@@ -806,20 +801,20 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
     """, unsafe_allow_html=True)
     with st.container():
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {ORANGE}; border-radius: 0 0 10px 10px; margin-bottom: 20px;">', unsafe_allow_html=True)
-        ad = st.selectbox("Área destino:", list(st.session_state.areas.keys()), key="ad_selector")
-        st.markdown(f'<span class="area-goal">Tarea</span>', unsafe_allow_html=True)
-        nt = st.text_input("¿Qué vas a hacer?", placeholder="Ej: Correr 5km...", key="nt_input", label_visibility="collapsed")
         
-        st.markdown(f'<span class="area-goal">Días activos</span>', unsafe_allow_html=True)
-        dias_tarea = st.multiselect("Selecciona los días:", dias_semana, default=dias_semana, key="dias_multi")
+        st.markdown('<span class="area-goal">Área destino</span>', unsafe_allow_html=True)
+        ad = st.selectbox("Área destino:", list(st.session_state.areas.keys()), key="ad_selector", label_visibility="collapsed")
+        st.markdown('<span class="area-goal">Tarea</span>', unsafe_allow_html=True)
+        nt = st.text_input("¿Qué vas a hacer?", placeholder="Ej: Correr 5km...", key="nt_input", label_visibility="collapsed")
+        st.markdown('<span class="area-goal">Días activos</span>', unsafe_allow_html=True)
+        dias_tarea = st.multiselect("Selecciona los días:", dias_semana, default=dias_semana, key="dias_multi", label_visibility="collapsed")
         
         if st.button("GUARDAR TAREA", width="stretch"):
             if not nt:
-             st.warning("Escribe el nombre de la tarea.")
+                st.warning("Escribe el nombre de la tarea.")
             elif not dias_tarea:
-             st.warning("Selecciona al menos un día.")
+                st.warning("Selecciona al menos un día.")
             else:
-                # 1. Guardar en la nube (Excel)
                 hoja_c = conectar_google()
                 if hoja_c:
                     try:
@@ -828,15 +823,9 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
                         except:
                             p_conf = hoja_c.worksheet("Configuracion")
                         
-                        # Convertimos la lista de días ["Lunes", "Martes"] en un texto "Lunes,Martes"
                         dias_texto = ",".join(dias_tarea)
-                        # Buscamos el objetivo actual de esa área para no dejarlo vacío
                         objetivo_actual = st.session_state.areas[ad][1]
-                        
-                        # Añadimos fila: Token, Area, Objetivo, Tarea, Dias
                         p_conf.append_row([st.session_state.user_key, ad, objetivo_actual, nt, dias_texto])
-                        
-                        # 2. Actualizar memoria local
                         st.session_state.areas[ad][0].append({"nombre": nt, "dias": dias_tarea})
                         st.success(f"Tarea '{nt}' añadida a {ad}")
                         time.sleep(1)
@@ -847,8 +836,8 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
                     st.error("Error de conexión.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# --- BLOQUE 3: ELIMINAR ELEMENTOS (LIMPIEZA EN NUBE) ---
-    RED_ALERT = "#FF4B4B" # El rojo estándar de Streamlit
+    # --- BLOQUE 3: ELIMINAR ELEMENTOS ---
+    RED_ALERT = "#FF4B4B"
     st.markdown(f"""
         <div style="padding: 8px; background-color: #f1f1f1; border-radius: 10px 10px 0 0; border: 1px solid {RED_ALERT}; border-bottom: none;">
             <span style="color: {DEEP_SPACE}; font-weight: 800; font-style: italic; text-transform: uppercase;">Eliminar Elementos</span>
@@ -856,7 +845,9 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
     """, unsafe_allow_html=True)
     with st.container():
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {RED_ALERT}; border-radius: 0 0 10px 10px;">', unsafe_allow_html=True)
-        opcion_del = st.radio("¿Qué deseas eliminar?", ["Una Tarea", "Un Área completa"], horizontal=True)
+        
+        st.markdown('<span class="area-goal">¿Qué deseas eliminar?</span>', unsafe_allow_html=True)
+        opcion_del = st.radio("¿Qué deseas eliminar?", ["Una Tarea", "Un Área completa"], horizontal=True, label_visibility="collapsed")
         
         hoja_c = conectar_google()
         try:
@@ -865,33 +856,29 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
             p_conf = hoja_c.worksheet("Configuracion")
 
         if opcion_del == "Una Tarea":
-            ae = st.selectbox("Área de la tarea:", list(st.session_state.areas.keys()), key="ae_selector")
+            st.markdown('<span class="area-goal">Área de la tarea</span>', unsafe_allow_html=True)
+            ae = st.selectbox("Área de la tarea:", list(st.session_state.areas.keys()), key="ae_selector", label_visibility="collapsed")
             tareas_disp = [t["nombre"] for t in st.session_state.areas[ae][0]]
-            te = st.selectbox("Selecciona la tarea a eliminar:", tareas_disp, key="te_selector")
+            st.markdown('<span class="area-goal">Selecciona la tarea a eliminar</span>', unsafe_allow_html=True)
+            te = st.selectbox("Selecciona la tarea a eliminar:", tareas_disp, key="te_selector", label_visibility="collapsed")
             
             if st.button("ELIMINAR TAREA", width="stretch"):
-                # 1. Borrar en Excel
-                celda = p_conf.find(te) # Busca el nombre de la tarea
+                celda = p_conf.find(te)
                 if celda:
                     p_conf.delete_rows(celda.row)
-                
-                # 2. Borrar en memoria local
                 st.session_state.areas[ae][0] = [t for t in st.session_state.areas[ae][0] if t["nombre"] != te]
                 st.error(f"Tarea '{te}' eliminada.")
                 time.sleep(1)
                 st.rerun()
 
         else:
-            area_e = st.selectbox("Área a eliminar:", list(st.session_state.areas.keys()), key="area_e_selector")
+            st.markdown('<span class="area-goal">Área a eliminar</span>', unsafe_allow_html=True)
+            area_e = st.selectbox("Área a eliminar:", list(st.session_state.areas.keys()), key="area_e_selector", label_visibility="collapsed")
             if st.button("ELIMINAR ÁREA", width="stretch"):
-                # 1. Borrar todas las filas de esa área en Excel
                 filas = p_conf.get_all_values()
                 for i, fila in enumerate(reversed(filas), 1):
-                    # Si el Token coincide y el Area coincide
                     if fila[0] == st.session_state.user_key and fila[1] == area_e:
                         p_conf.delete_rows(len(filas) - i + 1)
-                
-                # 2. Borrar en memoria local
                 del st.session_state.areas[area_e]
                 st.error(f"Área '{area_e}' y sus tareas eliminadas.")
                 time.sleep(1)
@@ -1151,6 +1138,7 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
+
 
 
 
