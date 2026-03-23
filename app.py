@@ -847,7 +847,7 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         st.markdown(f'<div style="background-color: white; padding: 15px; border: 1px solid {RED_ALERT}; border-radius: 0 0 10px 10px;">', unsafe_allow_html=True)
         
         st.markdown('<span class="area-goal">¿Qué deseas eliminar?</span>', unsafe_allow_html=True)
-        opcion_del = st.radio("¿Qué deseas eliminar?", ["Una Tarea", "Un Área completa"], horizontal=True, label_visibility="collapsed")
+        opcion_del = st.radio("¿Qué deseas eliminar?", ["Una Tarea", "Un Área completa"], label_visibility="collapsed")
         
         hoja_c = conectar_google()
         try:
@@ -1138,7 +1138,6 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
-
 
 
 
