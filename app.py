@@ -11,7 +11,7 @@ from google.oauth2.service_account import Credentials
 
 def generar_feedback_ia(df_historial, nombre_usuario):
     if df_historial.empty:
-        return f"¡Bienvenida, {nombre_usuario}! El primer paso para el éxito es el registro. ¡Hoy es un excelente día para empezar tu primera victoria estratégica!"
+        return f"¡Bienvenido/a, {nombre_usuario}! El primer paso para el éxito es el registro. ¡Hoy es un excelente día para empezar tu primera victoria estratégica!"
     
     # 1. Analizamos datos reales
     total_logros = len(df_historial)
@@ -902,13 +902,90 @@ with st.expander("📁 GESTIÓN DE ÁREAS Y TAREAS", expanded=False):
         st.markdown('</div>', unsafe_allow_html=True)
             
 # --- VISTA SEMANAL CON DESPLEGABLES Y METAS EN ROJO ---
+# --- FUNCIONES DE BORRADORES ---
+def guardar_borrador(nombre_dia, nombre_area, tarea_nombre, logro, check):
+    """Guarda o actualiza un borrador en la nube"""
+    hoja = conectar_google()
+    if hoja:
+        try:
+            pestana = hoja.spreadsheet.worksheet("Borradores")
+            fecha_hoy = ahora_mx.strftime("%Y-%m-%d")
+            
+            # Usamos el caché local para evitar leer la hoja
+            key_cache = f"borrador_row_{nombre_dia}_{nombre_area}_{tarea_nombre}"
+            
+            if key_cache in st.session_state:
+                # Ya sabemos la fila, solo actualizamos
+                fila_num = st.session_state[key_cache]
+                pestana.update(range_name=f"F{fila_num}", values=[[logro]])
+                pestana.update(range_name=f"G{fila_num}", values=[["1" if check else "0"]])
+            else:
+                # Primera vez, agregamos fila nueva
+                pestana.append_row([
+                    st.session_state.user_key,
+                    fecha_hoy,
+                    nombre_dia,
+                    nombre_area,
+                    tarea_nombre,
+                    logro,
+                    "1" if check else "0"
+                ])
+                # Guardamos el número de fila en caché
+                todas = pestana.get_all_values()
+                st.session_state[key_cache] = len(todas)
+                
+        except Exception as e:
+            st.error(f"Error al guardar borrador: {e}")
+
+def cargar_borradores_dia(nombre_dia):
+    """Carga los borradores del día actual desde la nube"""
+    hoja = conectar_google()
+    borradores = {}
+    if hoja:
+        try:
+            pestana = hoja.spreadsheet.worksheet("Borradores")
+            fecha_hoy = ahora_mx.strftime("%Y-%m-%d")
+            filas = pestana.get_all_values()
+            
+            for fila in filas[1:]:
+                if (len(fila) >= 7 and
+                    fila[0] == st.session_state.user_key and
+                    fila[1] == fecha_hoy and
+                    fila[2] == nombre_dia):
+                    key = f"{fila[3]}_{fila[4]}"  # area_tarea
+                    borradores[key] = {
+                        "logro": fila[5],
+                        "check": fila[6] == "1"
+                    }
+        except Exception as e:
+            st.error(f"Error al cargar borradores: {e}")
+    return borradores
+
+def limpiar_borradores_dia(nombre_dia):
+    """Elimina los borradores del día después de finalizar"""
+    hoja = conectar_google()
+    if hoja:
+        try:
+            pestana = hoja.spreadsheet.worksheet("Borradores")
+            fecha_hoy = ahora_mx.strftime("%Y-%m-%d")
+            filas = pestana.get_all_values()
+            
+            # Eliminamos de abajo hacia arriba para no desfasar índices
+            for i, fila in enumerate(reversed(filas[1:]), 1):
+                if (len(fila) >= 3 and
+                    fila[0] == st.session_state.user_key and
+                    fila[1] == fecha_hoy and
+                    fila[2] == nombre_dia):
+                    pestana.delete_rows(len(filas) - i + 1)
+        except Exception as e:
+            st.error(f"Error al limpiar borradores: {e}")
+
+# --- VISTA SEMANAL ---
 dict_checks = {}
 
 for i, nombre_dia in enumerate(dias_semana):
-    # Creamos el expander para cada día
     with st.expander(f"🔴 {nombre_dia.upper()}", expanded=False):
         
-        # Título interno con tu estilo de Azul Espacial y Naranja
         st.markdown(f"""
             <div style="padding: 5px; border-bottom: 3px solid {ORANGE}; margin-bottom: 15px;">
                 <span style="color: {DEEP_SPACE}; font-size: 1.4rem; font-weight: 800; font-style: italic;">
@@ -918,61 +995,110 @@ for i, nombre_dia in enumerate(dias_semana):
         """, unsafe_allow_html=True)
         
         v = st.session_state.version_tablero
-        tareas_dia_recolectadas = [] 
+        tareas_dia_recolectadas = []
         
+        # Cargamos borradores de este día
+        key_borradores = f"borradores_{nombre_dia}"
+        if key_borradores not in st.session_state:
+            st.session_state[key_borradores] = cargar_borradores_dia(nombre_dia)
+        borradores_dia = st.session_state[key_borradores]
+
         # --- BUCLE DE ÁREAS ---
         for nombre_area, info in st.session_state.areas.items():
-            lista_tareas = info[0] 
-            meta = info[1]        
+            lista_tareas = info[0]
+            meta = info[1]
 
             tareas_filtradas = [
-                t for t in lista_tareas 
+                t for t in lista_tareas
                 if isinstance(t, dict) and nombre_dia.lower() in [d.strip().lower() for d in t.get("dias", [])]
             ]
              
             if tareas_filtradas:
-                # Nombre del Área
                 st.markdown(f'<div style="font-weight:bold; color:{BLUE_GREEN}; margin-top:15px; border-left: 4px solid {BLUE_GREEN}; padding-left: 10px;">{nombre_area.upper()}</div>', unsafe_allow_html=True)
-                
-                # --- META EN ROJO (Actualizado) ---
                 st.markdown(f'<div style="color: #FF0000; font-weight: bold; font-size: 1.0rem; margin-bottom: 10px;">🎯 Meta: {meta}</div>', unsafe_allow_html=True)
                 
                 for idx, tarea_obj in enumerate(tareas_filtradas):
                     tarea_nombre = tarea_obj["nombre"]
                     k_chk = f"chk_{nombre_dia}_{nombre_area}_{idx}_v{v}"
                     k_log = f"log_{nombre_dia}_{nombre_area}_{idx}_v{v}"
+                    borrador_key = f"{nombre_area}_{tarea_nombre}"
+                    
+                    # Recuperamos borrador si existe
+                    borrador = borradores_dia.get(borrador_key, {})
+                    check_inicial = borrador.get("check", False)
+                    logro_inicial = borrador.get("logro", "")
+                    
+                    # Inicializamos en session_state con valor del borrador
+                    if k_chk not in st.session_state:
+                        st.session_state[k_chk] = check_inicial
+                    if k_log not in st.session_state:
+                        st.session_state[k_log] = logro_inicial
                     
                     st.markdown(f'<div style="color: {DEEP_SPACE}; font-weight: 600; margin-top: 8px;">{tarea_nombre}</div>', unsafe_allow_html=True)
                     
-                    c_c, c_l = st.columns([0.15, 0.85]) 
+                    c_c, c_l = st.columns([0.15, 0.85])
                     with c_c:
                         check = st.checkbox("Logrado", key=k_chk, label_visibility="collapsed")
                     with c_l:
                         logro = st.text_input("Logro:", key=k_log, placeholder="¿Qué lograste?", label_visibility="collapsed")
                     
-                    if check: 
+                    # Guardamos borrador automáticamente si hay cambio
+                    # Solo guardamos al marcar/desmarcar el checkbox, no en cada tecla
+                    if check != check_inicial:
+                        guardar_borrador(nombre_dia, nombre_area, tarea_nombre, logro, check)
+                        st.session_state[key_borradores][borrador_key] = {
+                            "logro": logro,
+                            "check": check
+                        }
+                    
+                    if check:
                         tareas_dia_recolectadas.append({
-                            "Área": nombre_area, 
-                            "Tarea": tarea_nombre, 
+                            "Área": nombre_area,
+                            "Tarea": tarea_nombre,
                             "Logro": logro if logro else "Tarea completada"
                         })
 
-        # --- BOTÓN DE GUARDAR ---
+        # --- BOTÓN FINALIZAR ---
         st.markdown('<div style="margin-top:20px;">', unsafe_allow_html=True)
         if st.button(f"FINALIZAR {nombre_dia.upper()}", key=f"btn_save_{nombre_dia}_{v}", use_container_width=True):
             if tareas_dia_recolectadas:
+                fecha_hoy = ahora_mx.strftime("%Y-%m-%d")
                 df_hoy = pd.DataFrame(tareas_dia_recolectadas)
-                df_hoy["Fecha"] = datetime.now().strftime("%d/%m/%Y")
+                df_hoy["Fecha"] = fecha_hoy
                 df_hoy["Día"] = nombre_dia
                 
-                st.session_state.historial = pd.concat([st.session_state.historial, df_hoy], ignore_index=True)
+                # Guardamos en historial nube
+                guardadas = 0
+                for _, fila in df_hoy.iterrows():
+                    datos_excel = [
+                        st.session_state.user_key,
+                        fila["Fecha"],
+                        fila["Día"],
+                        fila["Área"],
+                        fila["Tarea"],
+                        fila.get("Logro", "Tarea completada")
+                    ]
+                    if guardar_en_historial_nube(datos_excel):
+                        guardadas += 1
                 
-                st.success(f"¡{nombre_dia} guardado en la Bitácora!")
-                time.sleep(1)
-                st.rerun()
+                # Actualizamos historial local
+                df_hoy["Token"] = st.session_state.user_key
+                st.session_state.historial = pd.concat(
+                [st.session_state.historial, df_hoy], ignore_index=True
+                )
+                
+                # Limpiamos borradores del día
+                limpiar_borradores_dia(nombre_dia)
+                st.session_state[key_borradores] = {}
+                
+                # Limpiamos checks y logros
+                st.session_state.version_tablero += 1
+                
+                st.success(f"✅ ¡{nombre_dia} finalizado! {guardadas} tareas guardadas.")
             else:
                 st.warning("No hay tareas seleccionadas.")
         st.markdown('</div>', unsafe_allow_html=True)
+
 # --- ANALÍTICA ---
 st.write("---")
 c_g, c_b = st.columns([1, 1])
@@ -1036,34 +1162,28 @@ with c_cob:
     if st.button("AGREGAR PTS", key="btn_final_pts", width="stretch"):
         if not st.session_state.historial.empty:
             try:
-                puntos_a_sumar_hoy = 0
-                tareas_nuevas_contadas = 0
-
-                # 1. Procesar cada tarea una por una
-                for index, fila in st.session_state.historial.iterrows():
-                    datos_excel = [
-                        st.session_state.user_key, 
-                        fila["Fecha"], 
-                        fila["Día"], 
-                        fila["Área"], 
-                        fila["Tarea"], 
-                        fila["Logro"]
-                    ]
-                    
-                    # Llamamos a la función que ya tiene el buscador de duplicados
-                    fue_guardado = guardar_en_historial_nube(datos_excel)
-                    
-                    if fue_guardado:
-                        # Solo sumamos puntos si la función devolvió True (no era duplicado)
-                        puntos_a_sumar_hoy += 10
-                        tareas_nuevas_contadas += 1
+                # Contamos tareas que aún no tienen puntos
+                key_pts_contados = "tareas_con_puntos"
+                if key_pts_contados not in st.session_state:
+                    st.session_state[key_pts_contados] = set()
                 
-                if tareas_nuevas_contadas > 0:
-                    # 2. Actualizar puntos localmente
-                    st.session_state.puntos += puntos_a_sumar_hoy
+                puntos_a_sumar = 0
+                tareas_nuevas = 0
+                
+                for index, fila in st.session_state.historial.iterrows():
+                    # Creamos un identificador único por tarea
+                    id_tarea = f"{fila['Fecha']}_{fila['Día']}_{fila['Área']}_{fila['Tarea']}"
+                    
+                    if id_tarea not in st.session_state[key_pts_contados]:
+                        puntos_a_sumar += 10
+                        tareas_nuevas += 1
+                        st.session_state[key_pts_contados].add(id_tarea)
+                
+                if tareas_nuevas > 0:
+                    st.session_state.puntos += puntos_a_sumar
                     st.session_state.version_tablero += 1
-
-                    # 3. --- SINCRONIZAR SALDO TOTAL EN PESTAÑA "PUNTOS" ---
+                    
+                    # Sincronizar puntos en Google Sheets
                     hoja_p = conectar_google()
                     try:
                         try:
@@ -1072,26 +1192,24 @@ with c_cob:
                             p_puntos = hoja_p.worksheet("Puntos")
                         
                         celda_token = p_puntos.find(st.session_state.user_key)
-                        
                         if celda_token:
                             p_puntos.update_cell(celda_token.row, 2, st.session_state.puntos)
                         else:
                             p_puntos.append_row([st.session_state.user_key, st.session_state.puntos])
                         
-                        st.success(f"¡Sincronizado! +{puntos_a_sumar_hoy} pts por {tareas_nuevas_contadas} tareas nuevas.")
+                        st.success(f"¡+{puntos_a_sumar} pts por {tareas_nuevas} tareas nuevas!")
                     except Exception as e_pts:
-                        st.warning(f"Historial guardado, pero error en saldo: {e_pts}")
+                        st.warning(f"Error al guardar puntos: {e_pts}")
                     
                     time.sleep(1)
                     st.rerun()
                 else:
-                    # ESTA ES LA PARTE QUE MODIFICAMOS:
-                    aviso = st.info("Bitácora actualizada: las tareas nuevas se han unido a tus registros previos.")
-                    time.sleep(2) # Espera 2 segundos para que el usuario lo lea
-                    aviso.empty() # Borra el cuadro azul de la pantalla
-                
+                    aviso = st.info("Ya tienes puntos por todas las tareas registradas.")
+                    time.sleep(2)
+                    aviso.empty()
+                    
             except Exception as e:
-                st.error(f"Error al sincronizar: {e}")
+                st.error(f"Error: {e}")
         else:
             st.warning("La bitácora está vacía.")
 
@@ -1154,9 +1272,3 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
-
-
-
-
-
-
