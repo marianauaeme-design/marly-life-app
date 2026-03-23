@@ -105,6 +105,8 @@ def cargar_areas_desde_nube():
             datos = pestana.get_all_records()
             
             for fila in datos:
+                token_fila = str(fila.get('Token')).strip()
+                token_actual = str(st.session_state.user_key).strip()
                 # Filtro por el Token del usuario logueado
                 if str(fila.get('Token')).strip() == str(st.session_state.user_key).strip():
                     area = str(fila.get('Area', 'General'))
@@ -938,19 +940,35 @@ for i, nombre_dia in enumerate(dias_semana):
 
         # --- BOTÓN DE GUARDAR ---
         st.markdown('<div style="margin-top:20px;">', unsafe_allow_html=True)
-        if st.button(f"FINALIZAR {nombre_dia.upper()}", key=f"btn_save_{nombre_dia}_{v}", use_container_width=True):
-            if tareas_dia_recolectadas:
-                df_hoy = pd.DataFrame(tareas_dia_recolectadas)
-                df_hoy["Fecha"] = datetime.now().strftime("%d/%m/%Y")
-                df_hoy["Día"] = nombre_dia
-                
-                st.session_state.historial = pd.concat([st.session_state.historial, df_hoy], ignore_index=True)
-                
-                st.success(f"¡{nombre_dia} guardado en la Bitácora!")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.warning("No hay tareas seleccionadas.")
+if st.button(f"FINALIZAR {nombre_dia.upper()}", key=f"btn_save_{nombre_dia}_{v}", use_container_width=True):
+    if tareas_dia_recolectadas:                                    # ← nivel 2
+        df_hoy = pd.DataFrame(tareas_dia_recolectadas)            # ← nivel 3
+        fecha_hoy = ahora_mx.strftime("%Y-%m-%d")
+        df_hoy["Fecha"] = fecha_hoy
+        df_hoy["Día"] = nombre_dia
+        
+        guardadas = 0
+        for _, fila in df_hoy.iterrows():                         # ← nivel 3 (AQUÍ el error)
+            datos_excel = [
+                st.session_state.user_key,
+                fila["Fecha"],
+                fila["Día"],
+                fila["Área"],
+                fila["Tarea"],
+                fila.get("Logro", "Tarea completada")
+            ]
+            if guardar_en_historial_nube(datos_excel):
+                guardadas += 1
+        
+        st.session_state.historial = pd.concat(
+            [st.session_state.historial, df_hoy], ignore_index=True
+        )
+        
+        st.success(f"¡{nombre_dia} guardado! ({guardadas} tareas subidas a la nube)")
+        time.sleep(1)
+        st.rerun()
+    else:
+        st.warning("No hay tareas seleccionadas.")
         st.markdown('</div>', unsafe_allow_html=True)
 # --- ANALÍTICA ---
 st.write("---")
