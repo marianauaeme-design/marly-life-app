@@ -90,53 +90,49 @@ st.set_page_config(page_title="Plan Semanal", layout="wide")
 
 # --- INICIALIZACIÓN DE ÁREAS (SINCRONIZACIÓN TOTAL) ---
 def cargar_areas_desde_nube():
-    """Busca en el Excel las áreas del usuario y las guarda en la sesión"""
     hoja_conf = conectar_google()
     config_cargada = {}
 
     if hoja_conf:
         try:
-            # Intentar entrar a la pestaña
             try:
                 pestana = hoja_conf.spreadsheet.worksheet("Configuracion")
             except:
-                pestana = hoja_conf 
-            
+                pestana = hoja_conf
+
             datos = pestana.get_all_records()
-            
+
             for fila in datos:
-                token_fila = str(fila.get('Token')).strip()
-                token_actual = str(st.session_state.user_key).strip()
-                # Filtro por el Token del usuario logueado
-                if str(fila.get('Token')).strip() == str(st.session_state.user_key).strip():
-                    area = str(fila.get('Area', 'General'))
-                    objetivo = str(fila.get('Objetivo', ''))
-                    tarea = str(fila.get('Tarea', ''))
-                    dias_val = str(fila.get('Dias', ""))
-                    
+                if str(fila.get('Token', '')).strip() != str(st.session_state.user_key).strip():
+                    continue  # saltar filas de otros usuarios
+
+                area     = str(fila.get('Area', 'General')).strip()
+                objetivo = str(fila.get('Objetivo', '')).strip()
+                tarea    = str(fila.get('Tarea', '')).strip()
+                dias_val = str(fila.get('Dias', '')).strip()
+
+                # ← SIEMPRE creamos el área aunque no tenga tarea
+                if area not in config_cargada:
+                    config_cargada[area] = [[], objetivo]
+
+                if tarea:  # solo agregamos tarea si existe
                     dias = [d.strip() for d in dias_val.split(",")] if dias_val else []
-                    
-                    if area not in config_cargada:
-                        config_cargada[area] = [[], objetivo]
-                    
-                    if tarea:
-                        # Verificamos si la tarea ya existe para no duplicarla
-                        nombres_actuales = [t['nombre'] for t in config_cargada[area][0]]
-                        if tarea not in nombres_actuales:
-                            config_cargada[area][0].append({"nombre": tarea, "dias": dias})
+                    nombres_actuales = [t['nombre'] for t in config_cargada[area][0]]
+                    if tarea not in nombres_actuales:
+                        config_cargada[area][0].append({"nombre": tarea, "dias": dias})
 
             if config_cargada:
                 st.session_state.areas = config_cargada
                 return True
+
         except Exception as e:
             st.error(f"Error al sincronizar datos: {e}")
-    
-    # Si no hay datos, ponemos los de fábrica
+
     if 'areas' not in st.session_state or not st.session_state.areas:
         st.session_state.areas = {
             "Espiritu": [[{"nombre": "Lectura Biblia", "dias": ["Lunes"]}], "Crecer en fe"],
-            "Mente": [[{"nombre": "Inglés", "dias": ["Lunes"]}], "Fluidez 2026"],
-            "Cuerpo": [[{"nombre": "Ejercicio", "dias": ["Lunes"]}], "Salud óptima"]
+            "Mente":    [[{"nombre": "Inglés", "dias": ["Lunes"]}], "Fluidez 2026"],
+            "Cuerpo":   [[{"nombre": "Ejercicio", "dias": ["Lunes"]}], "Salud óptima"]
         }
     return False
 
