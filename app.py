@@ -513,8 +513,13 @@ with st.sidebar:
     
     st.divider()
     
-   if st.button("Cerrar Sesión"):
+if st.button("Cerrar Sesión"):
+        # Limpiamos todo para que al volver a entrar obligue a recargar del Excel
         st.session_state.autenticado = False
+        if 'areas' in st.session_state:
+            del st.session_state.areas
+        if 'user_key' in st.session_state:
+            st.session_state.user_key = None
         st.rerun()
     
     with st.expander("Seguridad: Cambiar mi PIN"):
