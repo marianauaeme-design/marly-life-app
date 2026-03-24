@@ -613,22 +613,23 @@ with st.sidebar:
 # 1. Lista de Recompensas existentes (Arriba)
     for item, costo in list(st.session_state.tienda.items()):
         
-        # Agregamos un contenedor con margen inferior para que no choque con los botones
+        # Contenedor con texto ROJO y separación clara
         st.markdown(f"""
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <span style="font-weight: bold; font-size: 1.1rem; color: #31333F;">{item}</span>
-                <span style="color: #FF4B4B; font-weight: bold; background: rgba(255, 75, 75, 0.1); padding: 2px 8px; border-radius: 5px;">
-                    {costo} pts
-                </span>
+            <div style="margin-bottom: 8px; line-height: 1.2;">
+                <div style="color: #FF4B4B; font-weight: 800; font-size: 1.1rem; text-transform: uppercase;">
+                    {item}
+                </div>
+                <div style="color: #FF4B4B; font-weight: 400; font-size: 0.9rem; opacity: 0.9;">
+                    {costo} PTS
+                </div>
             </div>
         """, unsafe_allow_html=True)
         
-        # Los botones ahora irán debajo con espacio suficiente
+        # Columnas para los botones
         c_c, c_b = st.columns(2)
         
         with c_c:
-            # Quitamos el div de 'btn-naranja' si este está causando el solapamiento 
-            # y usamos use_container_width
+            # use_container_width asegura que el botón no flote y respete el espacio
             if st.button(f"Canjear", key=f"side_buy_{item}", use_container_width=True):
                 if st.session_state.puntos >= costo:
                     st.session_state.puntos -= costo
@@ -636,27 +637,28 @@ with st.sidebar:
                     time.sleep(1)
                     st.rerun()
                 else: 
-                    st.error("Faltan puntos")
+                    st.error("Puntos insuficientes")
             
         with c_b:
             if st.button(f"Borrar", key=f"side_del_{item}", use_container_width=True):
-                # ... (tu lógica de borrado se mantiene igual)
-                try:
+                hoja_t = conectar_google()
+                if hoja_t:
                     try:
-                        pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
+                        try:
+                            pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
+                        except:
+                            pestana_t = hoja_t.worksheet("Tienda")
+                        
+                        filas = pestana_t.get_all_values()
+                        for i, fila in enumerate(filas, 1):
+                            if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
+                                pestana_t.delete_rows(i)
+                                break
+                        
+                        del st.session_state.tienda[item]
+                        st.rerun()
                     except:
-                        pestana_t = hoja_t.worksheet("Tienda")
-                    
-                    filas = pestana_t.get_all_values()
-                    for i, fila in enumerate(filas, 1):
-                        if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
-                            pestana_t.delete_rows(i)
-                            break
-                    
-                    del st.session_state.tienda[item]
-                    st.rerun()
-                except:
-                    st.error("Error")
+                        st.error("Error")
         
         st.write("---")
 
