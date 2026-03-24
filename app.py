@@ -610,27 +610,14 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.write("---")
-# 1. Lista de Recompensas existentes (Arriba)
+    # 1. Lista de Recompensas existentes (Arriba)
     for item, costo in list(st.session_state.tienda.items()):
-        
-        # Contenedor con texto ROJO y separación clara
-        st.markdown(f"""
-            <div style="margin-bottom: 8px; line-height: 1.2;">
-                <div style="color: #FF4B4B; font-weight: 800; font-size: 1.1rem; text-transform: uppercase;">
-                    {item}
-                </div>
-                <div style="color: #FF4B4B; font-weight: 400; font-size: 0.9rem; opacity: 0.9;">
-                    {costo} PTS
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Columnas para los botones
+        st.markdown(f"**{item}** \n*{costo} pts*")
         c_c, c_b = st.columns(2)
         
         with c_c:
-            # use_container_width asegura que el botón no flote y respete el espacio
-            if st.button(f"Canjear", key=f"side_buy_{item}", use_container_width=True):
+            st.markdown('<div class="btn-naranja">', unsafe_allow_html=True)
+            if st.button("Canjear", key=f"side_buy_{item}"):
                 if st.session_state.puntos >= costo:
                     st.session_state.puntos -= costo
                     st.success("¡Canjeado!")
@@ -638,9 +625,11 @@ with st.sidebar:
                     st.rerun()
                 else: 
                     st.error("Puntos insuficientes")
+            st.markdown('</div>', unsafe_allow_html=True)
             
         with c_b:
-            if st.button(f"Borrar", key=f"side_del_{item}", use_container_width=True):
+            st.markdown('<div class="btn-oscuro">', unsafe_allow_html=True)
+            if st.button("Eliminar", key=f"side_del_{item}"):
                 hoja_t = conectar_google()
                 if hoja_t:
                     try:
@@ -658,8 +647,8 @@ with st.sidebar:
                         del st.session_state.tienda[item]
                         st.rerun()
                     except:
-                        st.error("Error")
-        
+                        st.error("Error en la nube")
+            st.markdown('</div>', unsafe_allow_html=True)
         st.write("---")
 
     # 2. Formulario para Añadir Recompensa (Abajo)
