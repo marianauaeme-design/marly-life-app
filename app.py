@@ -522,12 +522,24 @@ if 'tienda' not in st.session_state:
             except:
                 pestana_t = hoja_t.worksheet("Tienda")
             
-            filas_tienda = pestana_t.get_all_records()
-            for fila in filas_tienda:
-                if str(fila.get('Token', '')).strip() == str(st.session_state.user_key).strip():
-                    st.session_state.tienda[str(fila.get('Item', ''))] = int(fila.get('Costo', 0))
-        except:
-            st.session_state.tienda = {}
+            # Usamos get_all_values para no depender de encabezados exactos si falla get_all_records
+            filas_tienda = pestana_t.get_all_values()
+            
+            if filas_tienda:
+                # Si usas encabezados, saltamos la primera fila con [1:]
+                for fila in filas_tienda[1:]: 
+                    if len(fila) >= 3:
+                        # fila[0] = Token, fila[1] = Item, fila[2] = Costo
+                        token_nube = str(fila[0]).strip()
+                        token_actual = str(st.session_state.user_key).strip()
+                        
+                        if token_nube == token_actual:
+                            nombre_item = str(fila[1])
+                            costo_item = int(fila[2]) if str(fila[2]).isdigit() else 0
+                            st.session_state.tienda[nombre_item] = costo_item
+        except Exception as e:
+            # Quitamos el limpiar la tienda aquí para que no se borre si ya tenías algo
+            st.error(f"Error al cargar premios: {e}")
 
 
 
