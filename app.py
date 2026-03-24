@@ -610,45 +610,54 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.write("---")
-    # 1. Lista de Recompensas existentes (Arriba)
+# 1. Lista de Recompensas existentes (Arriba)
     for item, costo in list(st.session_state.tienda.items()):
-        st.markdown(f"**{item}** \n*{costo} pts*")
+        
+        # Agregamos un contenedor con margen inferior para que no choque con los botones
+        st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-weight: bold; font-size: 1.1rem; color: #31333F;">{item}</span>
+                <span style="color: #FF4B4B; font-weight: bold; background: rgba(255, 75, 75, 0.1); padding: 2px 8px; border-radius: 5px;">
+                    {costo} pts
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Los botones ahora irán debajo con espacio suficiente
         c_c, c_b = st.columns(2)
         
         with c_c:
-            st.markdown('<div class="btn-naranja">', unsafe_allow_html=True)
-            if st.button("Canjear", key=f"side_buy_{item}"):
+            # Quitamos el div de 'btn-naranja' si este está causando el solapamiento 
+            # y usamos use_container_width
+            if st.button(f"Canjear", key=f"side_buy_{item}", use_container_width=True):
                 if st.session_state.puntos >= costo:
                     st.session_state.puntos -= costo
                     st.success("¡Canjeado!")
                     time.sleep(1)
                     st.rerun()
                 else: 
-                    st.error("Puntos insuficientes")
-            st.markdown('</div>', unsafe_allow_html=True)
+                    st.error("Faltan puntos")
             
         with c_b:
-            st.markdown('<div class="btn-oscuro">', unsafe_allow_html=True)
-            if st.button("Eliminar", key=f"side_del_{item}"):
-                hoja_t = conectar_google()
-                if hoja_t:
+            if st.button(f"Borrar", key=f"side_del_{item}", use_container_width=True):
+                # ... (tu lógica de borrado se mantiene igual)
+                try:
                     try:
-                        try:
-                            pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
-                        except:
-                            pestana_t = hoja_t.worksheet("Tienda")
-                        
-                        filas = pestana_t.get_all_values()
-                        for i, fila in enumerate(filas, 1):
-                            if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
-                                pestana_t.delete_rows(i)
-                                break
-                        
-                        del st.session_state.tienda[item]
-                        st.rerun()
+                        pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
                     except:
-                        st.error("Error en la nube")
-            st.markdown('</div>', unsafe_allow_html=True)
+                        pestana_t = hoja_t.worksheet("Tienda")
+                    
+                    filas = pestana_t.get_all_values()
+                    for i, fila in enumerate(filas, 1):
+                        if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
+                            pestana_t.delete_rows(i)
+                            break
+                    
+                    del st.session_state.tienda[item]
+                    st.rerun()
+                except:
+                    st.error("Error")
+        
         st.write("---")
 
     # 2. Formulario para Añadir Recompensa (Abajo)
@@ -990,7 +999,7 @@ def limpiar_borradores_dia(nombre_dia):
         except Exception as e:
             st.error(f"Error al limpiar borradores: {e}")
 
-# --- VISTA SEMANAL ---
+## --- VISTA SEMANAL ---
 dict_checks = {}
 
 for i, nombre_dia in enumerate(dias_semana):
@@ -1007,13 +1016,11 @@ for i, nombre_dia in enumerate(dias_semana):
         v = st.session_state.version_tablero
         tareas_dia_recolectadas = []
         
-        # Cargamos borradores de este día
         key_borradores = f"borradores_{nombre_dia}"
         if key_borradores not in st.session_state:
             st.session_state[key_borradores] = cargar_borradores_dia(nombre_dia)
         borradores_dia = st.session_state[key_borradores]
 
-        # --- BUCLE DE ÁREAS ---
         for nombre_area, info in st.session_state.areas.items():
             lista_tareas = info[0]
             meta = info[1]
@@ -1033,39 +1040,47 @@ for i, nombre_dia in enumerate(dias_semana):
                     k_log = f"log_{nombre_dia}_{nombre_area}_{idx}_v{v}"
                     borrador_key = f"{nombre_area}_{tarea_nombre}"
                     
-                    # Recuperamos borrador si existe
                     borrador = borradores_dia.get(borrador_key, {})
                     check_inicial = borrador.get("check", False)
                     logro_inicial = borrador.get("logro", "")
                     
-                    # Inicializamos en session_state con valor del borrador
                     if k_chk not in st.session_state:
                         st.session_state[k_chk] = check_inicial
                     if k_log not in st.session_state:
                         st.session_state[k_log] = logro_inicial
-                    
+
                     st.markdown(f'<div style="color: {DEEP_SPACE}; font-weight: 600; margin-top: 8px;">{tarea_nombre}</div>', unsafe_allow_html=True)
                     
                     c_c, c_l = st.columns([0.15, 0.85])
-                    with c_c:
-                        check = st.checkbox("Logrado", key=k_chk, label_visibility="collapsed")
                     with c_l:
-                        logro = st.text_input("Logro:", key=k_log, placeholder="¿Qué lograste?", label_visibility="collapsed")
-                    
-                    # Guardamos borrador automáticamente si hay cambio
-                    # Solo guardamos al marcar/desmarcar el checkbox, no en cada tecla
-                    if check != check_inicial:
-                        guardar_borrador(nombre_dia, nombre_area, tarea_nombre, logro, check)
+                        logro = st.text_input(
+                            "Logro:",
+                            key=k_log,
+                            placeholder="¿Qué lograste?",
+                            label_visibility="collapsed"
+                        )
+                    with c_c:
+                        check = st.checkbox(
+                            "Logrado",
+                            key=k_chk,
+                            label_visibility="collapsed"
+                        )
+
+                    logro_actual = st.session_state.get(k_log, "")
+                    check_actual = st.session_state.get(k_chk, False)
+
+                    if logro_actual != logro_inicial or check_actual != check_inicial:
+                        guardar_borrador(nombre_dia, nombre_area, tarea_nombre, logro_actual, check_actual)
                         st.session_state[key_borradores][borrador_key] = {
-                            "logro": logro,
-                            "check": check
+                            "logro": logro_actual,
+                            "check": check_actual
                         }
-                    
-                    if check:
+
+                    if check_actual:
                         tareas_dia_recolectadas.append({
                             "Área": nombre_area,
                             "Tarea": tarea_nombre,
-                            "Logro": logro if logro else "Tarea completada"
+                            "Logro": logro_actual or "Tarea completada"
                         })
 
         # --- BOTÓN FINALIZAR ---
@@ -1077,7 +1092,6 @@ for i, nombre_dia in enumerate(dias_semana):
                 df_hoy["Fecha"] = fecha_hoy
                 df_hoy["Día"] = nombre_dia
                 
-                # Guardamos en historial nube
                 guardadas = 0
                 for _, fila in df_hoy.iterrows():
                     datos_excel = [
@@ -1091,17 +1105,13 @@ for i, nombre_dia in enumerate(dias_semana):
                     if guardar_en_historial_nube(datos_excel):
                         guardadas += 1
                 
-                # Actualizamos historial local
                 df_hoy["Token"] = st.session_state.user_key
                 st.session_state.historial = pd.concat(
-                [st.session_state.historial, df_hoy], ignore_index=True
+                    [st.session_state.historial, df_hoy], ignore_index=True
                 )
                 
-                # Limpiamos borradores del día
                 limpiar_borradores_dia(nombre_dia)
                 st.session_state[key_borradores] = {}
-                
-                # Limpiamos checks y logros
                 st.session_state.version_tablero += 1
                 
                 st.success(f"✅ ¡{nombre_dia} finalizado! {guardadas} tareas guardadas.")
