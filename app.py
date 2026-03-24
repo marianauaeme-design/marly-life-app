@@ -593,26 +593,34 @@ with st.sidebar:
         
         st.divider() # Línea divisoria después del panel
 
-        # --- SIDEBAR: GESTIÓN DE TIENDA ---
+# --- SIDEBAR: GESTIÓN DE TIENDA ---
 with st.sidebar:
     st.header("Tienda de Recompensas")
     
-    # Diseño de puntos en ROJO para hacer match con el perfil
+    # Diseño de puntos en ROJO
     st.markdown(f"""
-    <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 75, 75, 0.3); background-color: rgba(255, 75, 75, 0.05); text-align: center;">
+    <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 75, 75, 0.3); background-color: rgba(255, 75, 75, 0.05); text-align: center; margin-bottom: 20px;">
         <small style="color: #FF4B4B; text-transform: uppercase; letter-spacing: 2px; font-size: 0.7rem; display: block; margin-bottom: 5px; font-weight: 600;">
             Créditos Acumulados
         </small>
-        <span style="color: #FF4B4B; font-weight: 900; font-size: 2rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <span style="color: #FF4B4B; font-weight: 900; font-size: 2rem; font-family: 'Segoe UI', sans-serif;">
             {st.session_state.puntos} <span style="font-size: 1.1rem;">PTS</span>
         </span>
     </div>
     """, unsafe_allow_html=True)
     
     st.write("---")
-    # 1. Lista de Recompensas existentes (Arriba)
+    
+    # 1. Lista de Recompensas (Iteramos sobre una copia para evitar errores al eliminar)
     for item, costo in list(st.session_state.tienda.items()):
-        st.markdown(f"**{item}** \n*{costo} pts*")
+        # ESTILO EN ROJO PARA LA RECOMPENSA
+        st.markdown(f"""
+        <div style="margin-bottom: -10px;">
+            <strong style="color: #FF4B4B; font-size: 1.1rem;">{item}</strong><br>
+            <em style="color: #FF4B4B; opacity: 0.8;">{costo} pts</em>
+        </div>
+        """, unsafe_allow_html=True)
+        
         c_c, c_b = st.columns(2)
         
         with c_c:
@@ -633,21 +641,26 @@ with st.sidebar:
                 hoja_t = conectar_google()
                 if hoja_t:
                     try:
+                        # Intentamos obtener la pestaña
                         try:
                             pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
                         except:
                             pestana_t = hoja_t.worksheet("Tienda")
                         
                         filas = pestana_t.get_all_values()
+                        # Buscamos la fila correcta (empezamos desde 1 para Google Sheets)
                         for i, fila in enumerate(filas, 1):
-                            if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
+                            # Verificamos ID de usuario y nombre del item
+                            if len(fila) >= 2 and str(fila[0]) == str(st.session_state.user_key) and str(fila[1]) == item:
                                 pestana_t.delete_rows(i)
-                                break
+                                break # Salimos tras borrar la primera coincidencia
                         
-                        del st.session_state.tienda[item]
+                        # Actualizamos estado local
+                        if item in st.session_state.tienda:
+                            del st.session_state.tienda[item]
                         st.rerun()
-                    except:
-                        st.error("Error en la nube")
+                    except Exception as e:
+                        st.error(f"Error en la nube: {e}")
             st.markdown('</div>', unsafe_allow_html=True)
         st.write("---")
 
@@ -1283,3 +1296,4 @@ with c_met:
                     </p>
                 </div>
             """, unsafe_allow_html=True)
+
