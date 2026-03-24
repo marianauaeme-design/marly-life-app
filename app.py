@@ -610,45 +610,54 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.write("---")
-    # 1. Lista de Recompensas existentes (Arriba)
+# 1. Lista de Recompensas existentes (Arriba)
     for item, costo in list(st.session_state.tienda.items()):
-        st.markdown(f"**{item}** \n*{costo} pts*")
+        
+        # Agregamos un contenedor con margen inferior para que no choque con los botones
+        st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-weight: bold; font-size: 1.1rem; color: #31333F;">{item}</span>
+                <span style="color: #FF4B4B; font-weight: bold; background: rgba(255, 75, 75, 0.1); padding: 2px 8px; border-radius: 5px;">
+                    {costo} pts
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Los botones ahora irán debajo con espacio suficiente
         c_c, c_b = st.columns(2)
         
         with c_c:
-            st.markdown('<div class="btn-naranja">', unsafe_allow_html=True)
-            if st.button("Canjear", key=f"side_buy_{item}"):
+            # Quitamos el div de 'btn-naranja' si este está causando el solapamiento 
+            # y usamos use_container_width
+            if st.button(f"Canjear", key=f"side_buy_{item}", use_container_width=True):
                 if st.session_state.puntos >= costo:
                     st.session_state.puntos -= costo
                     st.success("¡Canjeado!")
                     time.sleep(1)
                     st.rerun()
                 else: 
-                    st.error("Puntos insuficientes")
-            st.markdown('</div>', unsafe_allow_html=True)
+                    st.error("Faltan puntos")
             
         with c_b:
-            st.markdown('<div class="btn-oscuro">', unsafe_allow_html=True)
-            if st.button("Eliminar", key=f"side_del_{item}"):
-                hoja_t = conectar_google()
-                if hoja_t:
+            if st.button(f"Borrar", key=f"side_del_{item}", use_container_width=True):
+                # ... (tu lógica de borrado se mantiene igual)
+                try:
                     try:
-                        try:
-                            pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
-                        except:
-                            pestana_t = hoja_t.worksheet("Tienda")
-                        
-                        filas = pestana_t.get_all_values()
-                        for i, fila in enumerate(filas, 1):
-                            if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
-                                pestana_t.delete_rows(i)
-                                break
-                        
-                        del st.session_state.tienda[item]
-                        st.rerun()
+                        pestana_t = hoja_t.spreadsheet.worksheet("Tienda")
                     except:
-                        st.error("Error en la nube")
-            st.markdown('</div>', unsafe_allow_html=True)
+                        pestana_t = hoja_t.worksheet("Tienda")
+                    
+                    filas = pestana_t.get_all_values()
+                    for i, fila in enumerate(filas, 1):
+                        if str(fila[0]) == st.session_state.user_key and str(fila[1]) == item:
+                            pestana_t.delete_rows(i)
+                            break
+                    
+                    del st.session_state.tienda[item]
+                    st.rerun()
+                except:
+                    st.error("Error")
+        
         st.write("---")
 
     # 2. Formulario para Añadir Recompensa (Abajo)
